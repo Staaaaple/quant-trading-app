@@ -13,7 +13,16 @@
       "Bash(curl -s http://localhost:5174/)",
       "Bash(python3 -c \"import playwright; print\\('ok'\\)\")",
       "Bash(curl -s http://localhost:5174/src/assets/base.css)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(rm -f quant_trading.db)",
+      "Bash(curl -s -D - -H \"Origin: http://localhost:3000\" -X OPTIONS http://127.0.0.1:8000/api/v1/stock-picker/run -H \"Access-Control-Request-Method: POST\" -H \"Access-Control-Request-Headers: Content-Type\")",
+      "Bash(curl -s http://localhost:8000/api/v1/strategies)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s http://localhost:8000/docs)",
+      "Bash(curl -s -X POST 'http://localhost:8000/api/v1/strategy-flows' -H 'Content-Type: application/json' -d '{\"flow_id\":\"test_flow_001\",\"name\":\"测试策略流\",\"picker_strategy_id\":\"builtin_weekly_picker\",\"trade_strategy_id\":\"test_trade_001\"}')",
+      "Bash(curl -s -X POST 'http://localhost:8000/api/v1/backtests' -H 'Content-Type: application/json' -d '{\"backtest_id\":\"test_bt_flow_001\",\"strategy_id\":\"test_flow_001\",\"start_date\":\"2024-01-01\",\"end_date\":\"2024-03-01\",\"initial_cash\":100000}')",
+      "Bash(curl -s -X POST 'http://localhost:8000/api/v1/backtests/test_bt_flow_001/run' -H 'Content-Type: application/json' -d '{\"symbols\":[],\"start_date\":\"2024-01-01\",\"end_date\":\"2024-03-01\",\"initial_cash\":100000}')",
+      "Bash(curl -s 'http://localhost:8000/api/v1/stock-picker/weekly-summary')"
     ]
   }
 }

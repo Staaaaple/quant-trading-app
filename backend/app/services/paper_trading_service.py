@@ -12,6 +12,7 @@ from app.models.paper_trading import PaperSignal, PaperTradingSession
 from app.models.strategy import Strategy
 from app.schemas.paper_trading import PaperTradingSessionCreate, PaperTradingSessionUpdate
 from app.services.backtest_service import fetch_stock_data
+from app.services import strategy_flow_service, stock_picker_service, risk_strategy_service
 
 
 def get_session(db: Session, session_id: str):
@@ -66,6 +67,48 @@ def _write_strategy_to_temp_file(code: str) -> str:
         return f.name
 
 
+def _resolve_flow_for_paper(
+    db: Session,
+    strategy_id: str,
+    requested_symbols: list[str],
+) -> tuple[Strategy, list[str], dict]:
+    """解析策略流，返回实际交易策略、标的列表、风控配置."""
+    flow = strategy_flow_service.get_flow(db, strategy_id)
+    if not flow:
+        raise ValueError(f"Strategy flow {strategy_id} not found")
+
+    if flow.picker_strategy_id:
+        picker = db.query(Strategy).filter(Strategy.strategy_id == flow.picker_strategy_id).first()
+        if not picker:
+            raise ValueError(f"Picker strategy {flow.picker_strategy_id} not found")
+    if flow.risk_strategy_id:
+        risk = db.query(Strategy).filter(Strategy.strategy_id == flow.risk_strategy_id).first()
+        if not risk:
+            raise ValueError(f"Risk strategy {flow.risk_strategy_id} not found")
+    trade = db.query(Strategy).filter(Strategy.strategy_id == flow.trade_strategy_id).first()
+    if not trade:
+        raise ValueError(f"Trade strategy {flow.trade_strategy_id} not found")
+
+    symbols = requested_symbols
+    if flow.picker_strategy_id:
+        pool = stock_picker_service.execute_picker(db, flow.picker_strategy_id)
+        symbols = [item.symbol for item in pool.items]
+        if not symbols:
+            raise ValueError("选股结果为空，策略流终止")
+
+    risk_config = {}
+    if flow.risk_strategy_id:
+        cfg = risk_strategy_service.get_config(db, flow.risk_strategy_id)
+        if cfg:
+            risk_config = {
+                "max_position_pct": cfg.max_position_pct,
+                "max_daily_drawdown": cfg.max_daily_drawdown,
+                "blacklist": cfg.blacklist,
+            }
+
+    return trade, symbols, risk_config
+
+
 def run_paper_trading_session(db: Session, session_id: str) -> PaperTradingSession:
     """执行模拟盘回测并提取交易信号写入 PaperSignal."""
     db_session = get_session(db, session_id)
@@ -73,8 +116,12 @@ def run_paper_trading_session(db: Session, session_id: str) -> PaperTradingSessi
         raise ValueError(f"Paper trading session {session_id} not found")
 
     db_strategy = db.query(Strategy).filter(Strategy.strategy_id == db_session.strategy_id).first()
+    is_flow = False
     if not db_strategy:
-        raise ValueError(f"Strategy {db_session.strategy_id} not found")
+        flow = strategy_flow_service.get_flow(db, db_session.strategy_id)
+        if not flow:
+            raise ValueError(f"Strategy {db_session.strategy_id} not found")
+        is_flow = True
 
     symbols = json.loads(db_session.symbols)
     start_date = db_session.start_date or (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
@@ -86,6 +133,10 @@ def run_paper_trading_session(db: Session, session_id: str) -> PaperTradingSessi
 
     tmp_path = ""
     try:
+        risk_config = {}
+        if is_flow:
+            db_strategy, symbols, risk_config = _resolve_flow_for_paper(db, db_session.strategy_id, symbols)
+
         # 拉取数据（复用 backtest_service 的 AKShare 适配器）
         data_frames = {}
         for sym in symbols:
@@ -140,6 +191,7 @@ def run_paper_trading_session(db: Session, session_id: str) -> PaperTradingSessi
                 "total_trades": len(result.trades),
                 "total_orders": len(result.orders),
                 "engine_summary": str(result),
+                "risk_config": risk_config,
             },
             ensure_ascii=False,
             default=str,

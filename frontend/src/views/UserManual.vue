@@ -9,7 +9,7 @@ const steps = [
     icon: 'strategy',
     color: '#6366f1',
     route: '/strategies',
-    itemCount: 3,
+    itemCount: 5,
   },
   {
     key: 'backtest',
@@ -36,12 +36,12 @@ const steps = [
     key: 'stockPicker',
     icon: 'picker',
     color: '#14b8a6',
-    route: '/stock-pickers',
+    route: '/strategies/picker',
     itemCount: 4,
   },
 ]
 
-const tips = ['tip1', 'tip2', 'tip3', 'tip4', 'tip5', 'tip6', 'tip7']
+const tips = ['tip1', 'tip2', 'tip3', 'tip4', 'tip5', 'tip6', 'tip7', 'tip8', 'tip9']
 </script>
 
 <template>

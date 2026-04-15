@@ -4,7 +4,6 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { supportedLocales, type SupportedLocale } from './i18n'
 import { syncApi } from './api/sync'
-import { stockPickerApi, type WeeklySummary } from './api/stockPicker'
 
 const route = useRoute()
 const { locale, t } = useI18n()
@@ -20,7 +19,6 @@ function changeLanguage(lang: SupportedLocale) {
 }
 
 const pendingSummary = ref({ pending_count: 0, overdue_count: 0 })
-const weeklySummary = ref<WeeklySummary>({ has_new_weekly: false, item_count: 0 })
 
 async function loadPendingSummary() {
   try {
@@ -30,19 +28,9 @@ async function loadPendingSummary() {
   }
 }
 
-async function loadWeeklySummary() {
-  try {
-    weeklySummary.value = await stockPickerApi.getWeeklySummary()
-  } catch {
-    // ignore
-  }
-}
-
 onMounted(() => {
   loadPendingSummary()
   setInterval(loadPendingSummary, 60000)
-  loadWeeklySummary()
-  setInterval(loadWeeklySummary, 60000)
 })
 </script>
 
@@ -72,13 +60,6 @@ onMounted(() => {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
           </span>
           <span>{{ t('nav.backtests') }}</span>
-        </RouterLink>
-        <RouterLink to="/stock-pickers" class="nav-item" exact-active-class="active">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
-          </span>
-          <span>{{ t('nav.stockPickers') }}</span>
-          <span v-if="weeklySummary.has_new_weekly" class="nav-badge">{{ weeklySummary.item_count }}</span>
         </RouterLink>
         <RouterLink to="/paper-trading" class="nav-item" exact-active-class="active">
           <span class="nav-icon">
@@ -115,11 +96,7 @@ onMounted(() => {
         <h1 class="page-header-title">{{ pageTitle }}</h1>
       </header>
       <div class="main-content">
-        <RouterView v-slot="{ Component }">
-          <Transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </Transition>
-        </RouterView>
+        <RouterView />
       </div>
     </main>
   </div>

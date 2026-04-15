@@ -30,7 +30,7 @@ function showToast(msg: string) {
 
 async function loadStrategies() {
   try {
-    strategies.value = await strategyApi.list()
+    strategies.value = await strategyApi.list('?strategy_type=trade')
   } catch (e: any) {
     console.error('loadStrategies failed:', e)
     strategies.value = []
@@ -54,7 +54,7 @@ class MyStrategy(Strategy):
         pass
 `
   name.value = ''
-  strategyId.value = 'strategy_' + Date.now()
+  strategyId.value = 'trade_' + Date.now()
   isEditing.value = true
 }
 
@@ -76,6 +76,7 @@ async function saveStrategy() {
         strategy_id: strategyId.value,
         name: name.value,
         code: code.value,
+        type: 'trade',
       })
       showToast(t('strategy.createSuccess'))
       currentStrategy.value = await strategyApi.get(strategyId.value)
@@ -203,7 +204,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .workshop {
   display: flex;
-  height: calc(100vh - var(--header-height) - (var(--space-3xl) * 2));
+  height: calc(100vh - var(--header-height) - (var(--space-3xl) * 2) - 60px);
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);

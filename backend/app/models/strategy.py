@@ -9,7 +9,7 @@ class Strategy(Base):
     id = Column(Integer, primary_key=True, index=True)
     strategy_id = Column(String(64), unique=True, index=True, nullable=False)
     name = Column(String(128), nullable=False)
-    type = Column(String(16), default="trade", nullable=False)  # trade | picker
+    type = Column(String(16), default="trade", nullable=False)  # trade | picker | risk | flow
     description = Column(Text, nullable=True)
     code = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

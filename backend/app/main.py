@@ -9,6 +9,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.base import Base, engine
 from app.db.session import SessionLocal
+import app.models  # noqa: F401 - 确保所有模型注册到 Base.metadata
 from app.services import stock_picker_service
 
 scheduler = BackgroundScheduler()

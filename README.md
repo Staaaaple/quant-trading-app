@@ -1,6 +1,6 @@
 # Quant Trading App
 
-一个面向个人量化投资者的轻量级全栈量化交易平台，支持策略编写、回测验证、模拟盘监控以及真实持仓同步。
+一个面向个人量化投资者的轻量级全栈量化交易平台，支持策略编写、策略流编排、回测验证、模拟盘监控以及真实持仓同步。
 
 ---
 
@@ -23,10 +23,11 @@ quant-trading-app/
 │   ├── src/
 │   │   ├── api/           # 后端 API 封装
 │   │   ├── components/    # 公共组件
-│   │   ├── i18n/          # 国际化
+│   │   ├── i18n/          # 国际化（中/英/日）
 │   │   ├── router/        # 路由配置
 │   │   ├── stores/        # Pinia 状态管理
 │   │   ├── views/         # 页面视图
+│   │   │   └── strategies/# 策略工坊子页面（picker/trade/risk/flow）
 │   │   ├── App.vue
 │   │   └── main.ts
 │   └── package.json
@@ -36,6 +37,9 @@ quant-trading-app/
 │   │   ├── core/          # 配置项
 │   │   ├── db/            # 数据库模型与会话
 │   │   ├── models/        # SQLAlchemy ORM 模型
+│   │   │   ├── strategy.py
+│   │   │   ├── risk_strategy.py      # 风控策略配置模型
+│   │   │   └── strategy_flow.py      # 策略流模型
 │   │   ├── schemas/       # Pydantic 数据校验
 │   │   ├── services/      # 业务逻辑层
 │   │   └── main.py        # 应用入口
@@ -52,19 +56,24 @@ quant-trading-app/
 ## 核心功能
 
 ### 1. 策略工坊（Strategy Workshop）
-- 在线编写 Python 量化策略，内置 CodeMirror 编辑器
-- 支持策略的增删改查与版本管理
-- 策略代码持久化到本地数据库
+策略工坊是系统的策略中枢，统一包含四个子页面：
+
+- **选股策略（Picker）**：基于 akshare 获取 A 股市场数据，编写自定义选股逻辑；内置每周五自动运行的量价活跃选股策略
+- **交易策略（Trade）**：在线编写 Python 量化策略，内置 CodeMirror 编辑器，基于 akquant 框架
+- **风控策略（Risk）**：A+B 混合模式——既支持 Python 代码扩展（`risk_check(context)`），也内置表单化规则配置（仓位上限、日最大回撤、黑名单）
+- **策略流（Flow）**：将选股、风控、交易策略强绑定为流水线。策略流保存对子策略的 ID 引用，回测/模拟盘运行时自动完成选股 → 风控 → 交易的执行链路
 
 ### 2. 回测中心（Backtest Center）
-- 为指定策略配置回测参数（标的、时间范围、初始资金）
+- 为指定策略或策略流配置回测参数（标的、时间范围、初始资金）
 - 调用 akquant 引擎执行回测
 - 记录回测状态与结果，支持历史回测对比
+- **策略流回测**：若选择策略流，系统自动先执行选股节点得到标的，再运行交易节点；若选股结果为空则自动终止并提示
 
 ### 3. 模拟盘监控（Paper Trading Monitor）
-- 基于 akquant Paper Trading 模式运行策略
+- 基于 akquant Paper Trading 模式运行策略或策略流
 - 实时展示模拟持仓、盈亏与交易信号
 - 为真实交易执行提供决策参考
+- 支持策略流自动执行：选股 → 风控参数注入 → 交易
 
 ### 4. 真实持仓同步（Real Position Sync）
 - **双账本并行**：模拟账本（akquant）+ 真实账本（本系统独立维护）
@@ -145,6 +154,8 @@ npm run dev
 | 模块 | 前缀 |
 |------|------|
 | 策略管理 | `/api/v1/strategies` |
+| 风控策略配置 | `/api/v1/risk-strategies` |
+| 策略流 | `/api/v1/strategy-flows` |
 | 回测管理 | `/api/v1/backtests` |
 | 模拟盘 | `/api/v1/paper-trading` |
 | 持仓同步 | `/api/v1/sync` |
@@ -177,10 +188,13 @@ pytest
 
 ## 设计原则
 
-1. **不侵入 akquant 内部状态**：模拟盘与真实持仓采用双账本并行，避免直接修改引擎内部 `portfolio.positions`
-2. **预留自动交易扩展**：真实持仓表结构兼容未来 MiniQMT Gateway 自动接入
-3. **前后端分离**：RESTful API + 现代化前端架构，便于独立演进
-4. **本地优先**：SQLite + 本地文件存储，零外部数据库依赖，开箱即用
+1. **策略流强绑定**：通过 ID 引用实现策略组合，子策略更新后策略流自动生效，无需重新创建回测或模拟盘
+2. **禁止嵌套**：策略流只能绑定原子策略（trade/picker/risk），不允许嵌套绑定另一个策略流，避免无限递归
+3. **删除保护**：被策略流引用的子策略不允许删除，系统会提示「该策略正被策略流 XXX 引用」
+4. **不侵入 akquant 内部状态**：模拟盘与真实持仓采用双账本并行，避免直接修改引擎内部 `portfolio.positions`
+5. **预留自动交易扩展**：真实持仓表结构兼容未来 MiniQMT Gateway 自动接入
+6. **前后端分离**：RESTful API + 现代化前端架构，便于独立演进
+7. **本地优先**：SQLite + 本地文件存储，零外部数据库依赖，开箱即用
 
 ---
 

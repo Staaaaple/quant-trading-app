@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Codemirror } from 'vue-codemirror'
 import { python } from '@codemirror/lang-python'
@@ -7,6 +7,7 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { stockPickerApi, type StockPool, type PickerRun, type WeeklySummary } from '@/api/stockPicker'
 import { strategyApi, type Strategy } from '@/api/strategy'
 import { useRouter } from 'vue-router'
+import LoadingOverlay from '@/components/LoadingOverlay.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -18,8 +19,10 @@ const code = ref('')
 const name = ref('')
 const pickerId = ref('')
 const isEditing = ref(false)
+const showEditor = ref(false)
 const loading = ref(false)
 const running = ref(false)
+const runningWeekly = ref(false)
 const toast = ref('')
 const toastType = ref<'success' | 'error'>('success')
 
@@ -28,8 +31,11 @@ const pools = ref<StockPool[]>([])
 const runs = ref<PickerRun[]>([])
 const pushEnabled = ref(true)
 const showSettings = ref(false)
+const weeklyExpanded = ref(false)
 
 const builtinPickerId = 'builtin_weekly_picker'
+
+const showOverlay = computed(() => loading.value || running.value || runningWeekly.value)
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -47,16 +53,16 @@ async function loadPickers() {
 async function loadWeeklySummary() {
   try {
     weeklySummary.value = await stockPickerApi.getWeeklySummary()
-  } catch {
-    // ignore
+  } catch (e: any) {
+    console.error('loadWeeklySummary failed:', e)
   }
 }
 
 async function loadPools() {
   try {
     pools.value = await stockPickerApi.listPools()
-  } catch {
-    // ignore
+  } catch (e: any) {
+    console.error('loadPools failed:', e)
   }
 }
 
@@ -114,6 +120,10 @@ def pick_stocks():
   runs.value = []
 }
 
+watch(isEditing, (val) => {
+  showEditor.value = val
+})
+
 async function savePicker() {
   if (!name.value || !pickerId.value) {
     showToast(t('stockPicker.fillRequired'), 'error')
@@ -170,15 +180,40 @@ async function runPicker() {
   try {
     const pool = await stockPickerApi.runPicker(currentPicker.value.strategy_id)
     showToast(t('stockPicker.runSuccess', { count: pool.items.length }))
-    await loadPools()
+    // 立即将结果插入本地列表，避免依赖后续 loadPools 刷新
+    pools.value = [pool, ...pools.value.filter(p => p.pool_id !== pool.pool_id)]
     await loadRuns(currentPicker.value.strategy_id)
     if (currentPicker.value.strategy_id === builtinPickerId) {
-      await loadWeeklySummary()
+      weeklySummary.value = {
+        has_new_weekly: true,
+        pool,
+        generated_at: pool.generated_at,
+        item_count: pool.items.length,
+      }
     }
   } catch (e: any) {
     showToast(t('stockPicker.runError') + ': ' + e.message, 'error')
   } finally {
     running.value = false
+  }
+}
+
+async function runWeeklyPicker() {
+  runningWeekly.value = true
+  try {
+    const pool = await stockPickerApi.runPicker(builtinPickerId)
+    showToast(t('stockPicker.runSuccess', { count: pool.items.length }))
+    pools.value = [pool, ...pools.value.filter(p => p.pool_id !== pool.pool_id)]
+    weeklySummary.value = {
+      has_new_weekly: true,
+      pool,
+      generated_at: pool.generated_at,
+      item_count: pool.items.length,
+    }
+  } catch (e: any) {
+    showToast(t('stockPicker.runError') + ': ' + e.message, 'error')
+  } finally {
+    runningWeekly.value = false
   }
 }
 
@@ -197,11 +232,16 @@ onMounted(() => {
   loadPools()
   loadNotificationSettings()
 })
+
+onBeforeUnmount(() => {
+  showEditor.value = false
+})
 </script>
 
 <template>
-  <div class="picker-page">
-    <!-- Weekly pick banner -->
+  <div class="picker-page-wrapper">
+    <div class="picker-page">
+      <!-- Weekly pick banner -->
     <section v-if="weeklySummary?.has_new_weekly" class="weekly-banner card">
       <div class="weekly-header">
         <div>
@@ -212,25 +252,64 @@ onMounted(() => {
           </p>
         </div>
         <div class="weekly-actions">
+          <button
+            class="btn btn--secondary btn--sm"
+            :disabled="runningWeekly"
+            @click="runWeeklyPicker"
+          >
+            <span v-if="runningWeekly" class="btn-spinner" />
+            <span>{{ runningWeekly ? t('stockPicker.running') : t('stockPicker.runWeeklyNow') }}</span>
+          </button>
           <button class="btn btn--primary btn--sm" @click="goToBacktestWithPool(weeklySummary.pool!.pool_id)">
             {{ t('stockPicker.createBacktest') }}
           </button>
         </div>
       </div>
-      <div v-if="weeklySummary.pool" class="weekly-list">
-        <div v-for="item in weeklySummary.pool.items.slice(0, 10)" :key="item.id" class="weekly-item">
+      <div v-if="weeklySummary.pool" class="weekly-list" :class="{ expanded: weeklyExpanded }">
+        <div
+          v-for="item in weeklySummary.pool.items.slice(0, weeklyExpanded ? undefined : 10)"
+          :key="item.id"
+          class="weekly-item"
+        >
           <span class="weekly-symbol">{{ item.symbol }}</span>
           <span class="weekly-name">{{ item.name }}</span>
           <span v-if="item.score" class="weekly-score">{{ item.score }}</span>
         </div>
-        <div v-if="weeklySummary.pool.items.length > 10" class="weekly-more">
+        <div v-if="weeklySummary.pool.items.length > 10 && !weeklyExpanded" class="weekly-more">
           {{ t('stockPicker.andMore', { count: weeklySummary.pool.items.length - 10 }) }}
         </div>
+      </div>
+      <div v-if="weeklySummary.pool && weeklySummary.pool.items.length > 10" class="weekly-expand-bar">
+        <button class="btn btn--ghost btn--sm" @click="weeklyExpanded = !weeklyExpanded">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            :style="{ transform: weeklyExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+          {{ weeklyExpanded ? '收起' : '展开全部' }}
+        </button>
       </div>
     </section>
 
     <section v-else class="weekly-banner card empty">
       <p>{{ t('stockPicker.noWeeklyYet') }}</p>
+      <button
+        class="btn btn--secondary btn--sm"
+        style="margin-top: var(--space-md)"
+        :disabled="runningWeekly"
+        @click="runWeeklyPicker"
+      >
+        <span v-if="runningWeekly" class="btn-spinner" />
+        <span>{{ runningWeekly ? t('stockPicker.running') : t('stockPicker.runWeeklyNow') }}</span>
+      </button>
     </section>
 
     <div class="picker-workshop">
@@ -311,10 +390,10 @@ onMounted(() => {
 
           <div class="editor-body">
             <Codemirror
+              v-if="showEditor"
               v-model="code"
               :extensions="extensions"
               :style="{ height: '100%' }"
-              :autofocus="true"
               :indent-with-tab="true"
               :tab-size="4"
             />
@@ -385,6 +464,9 @@ onMounted(() => {
           <button class="btn btn--ghost" @click="showSettings = false">{{ t('common.cancel') }}</button>
         </div>
       </div>
+    </div>
+
+      <LoadingOverlay :visible="showOverlay" :text="t('common.loading')" />
     </div>
   </div>
 </template>
@@ -468,6 +550,30 @@ onMounted(() => {
   font-size: 0.85rem;
   color: var(--text-muted);
   padding: var(--space-sm) 0;
+}
+
+.weekly-expand-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-md);
+  padding-top: var(--space-sm);
+  border-top: 1px dashed rgba(99, 102, 241, 0.15);
+}
+
+.weekly-expand-bar .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--accent);
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 .picker-workshop {
@@ -833,5 +939,11 @@ onMounted(() => {
 
 .btn--secondary:hover {
   background: var(--border-subtle);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

@@ -1,3 +1,4 @@
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.strategy import Strategy
@@ -21,6 +22,7 @@ def create_strategy(db: Session, obj_in: StrategyCreate):
         name=obj_in.name,
         description=obj_in.description,
         code=obj_in.code,
+        type=obj_in.type or "trade",
     )
     db.add(db_obj)
     db.commit()
@@ -39,6 +41,15 @@ def update_strategy(db: Session, db_obj: Strategy, obj_in: StrategyUpdate):
 
 
 def delete_strategy(db: Session, db_obj: Strategy):
+    from app.services.strategy_flow_service import get_flows_by_strategy_id
+
+    flows = get_flows_by_strategy_id(db, db_obj.strategy_id)
+    if flows:
+        names = ", ".join([f.name for f in flows])
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Strategy is referenced by strategy flow(s): {names}. Please remove the references first.",
+        )
     db.delete(db_obj)
     db.commit()
     return db_obj

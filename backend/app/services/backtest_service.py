@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.models.backtest import BacktestResult
 from app.models.strategy import Strategy
+from app.models.strategy_flow import StrategyFlow
 from app.schemas.backtest import BacktestCreate, BacktestUpdate
+from app.services import stock_picker_service, strategy_flow_service, risk_strategy_service
 
 
 class AkshareProxyError(Exception):
@@ -285,6 +287,51 @@ def _extract_metrics(result) -> dict[str, Any]:
     return metrics
 
 
+def _resolve_flow(
+    db: Session,
+    strategy_id: str,
+    requested_symbols: list[str],
+) -> tuple[Strategy, list[str], dict]:
+    """解析策略流，返回实际交易策略、标的列表、风控配置."""
+    flow = strategy_flow_service.get_flow(db, strategy_id)
+    if not flow:
+        raise ValueError(f"Strategy flow {strategy_id} not found")
+
+    # 校验子策略存在性
+    if flow.picker_strategy_id:
+        picker = db.query(Strategy).filter(Strategy.strategy_id == flow.picker_strategy_id).first()
+        if not picker:
+            raise ValueError(f"Picker strategy {flow.picker_strategy_id} not found")
+    if flow.risk_strategy_id:
+        risk = db.query(Strategy).filter(Strategy.strategy_id == flow.risk_strategy_id).first()
+        if not risk:
+            raise ValueError(f"Risk strategy {flow.risk_strategy_id} not found")
+    trade = db.query(Strategy).filter(Strategy.strategy_id == flow.trade_strategy_id).first()
+    if not trade:
+        raise ValueError(f"Trade strategy {flow.trade_strategy_id} not found")
+
+    # 选股
+    symbols = requested_symbols
+    if flow.picker_strategy_id:
+        pool = stock_picker_service.execute_picker(db, flow.picker_strategy_id)
+        symbols = [item.symbol for item in pool.items]
+        if not symbols:
+            raise ValueError("选股结果为空，策略流终止")
+
+    # 风控配置
+    risk_config = {}
+    if flow.risk_strategy_id:
+        cfg = risk_strategy_service.get_config(db, flow.risk_strategy_id)
+        if cfg:
+            risk_config = {
+                "max_position_pct": cfg.max_position_pct,
+                "max_daily_drawdown": cfg.max_daily_drawdown,
+                "blacklist": cfg.blacklist,
+            }
+
+    return trade, symbols, risk_config
+
+
 def run_backtest_for_strategy(
     db: Session,
     backtest_id: str,
@@ -300,8 +347,12 @@ def run_backtest_for_strategy(
         raise ValueError(f"Backtest record {backtest_id} not found")
 
     db_strategy = db.query(Strategy).filter(Strategy.strategy_id == strategy_id).first()
+    is_flow = False
     if not db_strategy:
-        raise ValueError(f"Strategy {strategy_id} not found")
+        flow = strategy_flow_service.get_flow(db, strategy_id)
+        if not flow:
+            raise ValueError(f"Strategy {strategy_id} not found")
+        is_flow = True
 
     # 更新状态为运行中
     db_backtest.status = "running"
@@ -309,6 +360,10 @@ def run_backtest_for_strategy(
 
     tmp_path = ""
     try:
+        risk_config = {}
+        if is_flow:
+            db_strategy, symbols, risk_config = _resolve_flow(db, strategy_id, symbols)
+
         # 拉取数据
         data_frames = {}
         for sym in symbols:
@@ -337,7 +392,11 @@ def run_backtest_for_strategy(
         metrics = _extract_metrics(result)
         db_backtest.metrics = metrics
         db_backtest.status = "success"
-        db_backtest.logs = json.dumps({"engine_summary": str(result)}, ensure_ascii=False, default=str)
+        db_backtest.logs = json.dumps(
+            {"engine_summary": str(result), "risk_config": risk_config},
+            ensure_ascii=False,
+            default=str,
+        )
     except AkshareProxyError as e:
         db_backtest.status = "failed"
         db_backtest.logs = f"AkshareProxyError: {e}\n{traceback.format_exc()}"

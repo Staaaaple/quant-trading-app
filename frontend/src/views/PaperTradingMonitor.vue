@@ -3,13 +3,16 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { paperTradingApi, type PaperTradingSession } from '@/api/paperTrading'
 import { strategyApi, type Strategy } from '@/api/strategy'
+import { strategyFlowApi, type StrategyFlow } from '@/api/strategyFlow'
 import { syncApi, type DiffItem, type PaperSignal, type DailyReport } from '@/api/sync'
 import { accountSettingsApi, type AccountSettings } from '@/api/accountSettings'
+import LoadingOverlay from '@/components/LoadingOverlay.vue'
 
 const { t } = useI18n()
 
 const sessions = ref<PaperTradingSession[]>([])
 const strategies = ref<Strategy[]>([])
+const flows = ref<StrategyFlow[]>([])
 const loading = ref(false)
 const toast = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -86,14 +89,24 @@ async function loadSessions() {
 }
 
 async function loadStrategies() {
-  strategies.value = await strategyApi.list()
-  if (strategies.value.length && !newSession.value.strategy_id) {
-    newSession.value.strategy_id = strategies.value[0]!.strategy_id
+  const [s, f] = await Promise.all([
+    strategyApi.list(),
+    strategyFlowApi.list(),
+  ])
+  strategies.value = s
+  flows.value = f
+  const allIds = [...s.map(x => x.strategy_id), ...f.map(x => x.flow_id)]
+  if (allIds.length && !newSession.value.strategy_id) {
+    newSession.value.strategy_id = allIds[0]!
   }
-  if (strategies.value.length && !selectedStrategyId.value) {
-    selectedStrategyId.value = strategies.value[0]!.strategy_id
+  if (allIds.length && !selectedStrategyId.value) {
+    selectedStrategyId.value = allIds[0]!
     await loadDiff()
   }
+}
+
+function isFlow(id: string) {
+  return flows.value.some(f => f.flow_id === id)
 }
 
 async function loadAccountSettings() {
@@ -428,9 +441,16 @@ onMounted(() => {
         <h3 class="diff-title">持仓对比看板</h3>
         <div class="diff-actions">
           <select v-model="selectedStrategyId" class="form-input" @change="loadDiff">
-            <option v-for="s in strategies" :key="s.strategy_id" :value="s.strategy_id">
-              {{ s.name }} ({{ s.strategy_id }})
-            </option>
+            <optgroup :label="t('strategy.tabs.trade')">
+              <option v-for="s in strategies" :key="s.strategy_id" :value="s.strategy_id">
+                {{ s.name }} ({{ s.strategy_id }})
+              </option>
+            </optgroup>
+            <optgroup :label="t('strategy.tabs.flow')">
+              <option v-for="f in flows" :key="f.flow_id" :value="f.flow_id">
+                {{ f.name }} ({{ f.flow_id }})
+              </option>
+            </optgroup>
           </select>
           <button class="btn btn--secondary btn--sm" @click="openBatchModal">批量补录</button>
           <button class="btn btn--secondary btn--sm" @click="loadDailyReport">对账单</button>
@@ -504,10 +524,20 @@ onMounted(() => {
         <div class="form-group">
           <label>{{ t('common.strategy') }}</label>
           <select v-model="newSession.strategy_id" class="form-input">
-            <option v-for="s in strategies" :key="s.strategy_id" :value="s.strategy_id">
-              {{ s.name }}
-            </option>
+            <optgroup :label="t('strategy.tabs.trade')">
+              <option v-for="s in strategies" :key="s.strategy_id" :value="s.strategy_id">
+                {{ s.name }}
+              </option>
+            </optgroup>
+            <optgroup :label="t('strategy.tabs.flow')">
+              <option v-for="f in flows" :key="f.flow_id" :value="f.flow_id">
+                {{ f.name }}
+              </option>
+            </optgroup>
           </select>
+          <div v-if="isFlow(newSession.strategy_id)" class="flow-hint">
+            {{ t('flow.runHint') }}
+          </div>
         </div>
         <div class="form-group">
           <label>{{ t('common.symbols') }}</label>
@@ -804,6 +834,8 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <LoadingOverlay :visible="loading" :text="t('common.loading')" />
   </div>
 </template>
 
@@ -1239,5 +1271,11 @@ onMounted(() => {
 .batch-input {
   padding: 6px 8px;
   font-size: 0.85rem;
+}
+
+.flow-hint {
+  margin-top: var(--space-sm);
+  font-size: 0.8rem;
+  color: var(--accent);
 }
 </style>

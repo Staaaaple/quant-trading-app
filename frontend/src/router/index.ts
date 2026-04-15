@@ -14,7 +14,34 @@ const router = createRouter({
       path: '/strategies',
       name: 'strategies',
       meta: { titleKey: 'strategy.title' },
-      component: () => import('../views/StrategyWorkshop.vue'),
+      component: () => import('../views/strategies/StrategyLayout.vue'),
+      redirect: '/strategies/trade',
+      children: [
+        {
+          path: 'picker',
+          name: 'strategy-picker',
+          meta: { titleKey: 'stockPicker.title' },
+          component: () => import('../views/strategies/PickerEditor.vue'),
+        },
+        {
+          path: 'trade',
+          name: 'strategy-trade',
+          meta: { titleKey: 'strategy.title' },
+          component: () => import('../views/strategies/TradeEditor.vue'),
+        },
+        {
+          path: 'risk',
+          name: 'strategy-risk',
+          meta: { titleKey: 'strategy.riskTitle' },
+          component: () => import('../views/strategies/RiskEditor.vue'),
+        },
+        {
+          path: 'flow',
+          name: 'strategy-flow',
+          meta: { titleKey: 'strategy.flowTitle' },
+          component: () => import('../views/strategies/FlowEditor.vue'),
+        },
+      ],
     },
     {
       path: '/backtests',
@@ -27,12 +54,6 @@ const router = createRouter({
       name: 'paper-trading',
       meta: { titleKey: 'paperTrading.title' },
       component: () => import('../views/PaperTradingMonitor.vue'),
-    },
-    {
-      path: '/stock-pickers',
-      name: 'stock-pickers',
-      meta: { titleKey: 'stockPicker.title' },
-      component: () => import('../views/StockPicker.vue'),
     },
     {
       path: '/manual',

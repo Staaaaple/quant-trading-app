@@ -39,8 +39,19 @@
     "total": "总计",
     "pending": "待运行"
   },
+  "home": {
+    "noWeeklyYet": "暂无本周选股"
+  },
   "strategy": {
     "title": "策略工坊",
+    "riskTitle": "风控策略",
+    "flowTitle": "策略流",
+    "tabs": {
+      "picker": "选股策略",
+      "trade": "交易策略",
+      "risk": "风控",
+      "flow": "策略流"
+    },
     "list": "策略列表",
     "new": "新建策略",
     "editorPlaceholder": "请从左侧选择一个策略，或点击「新建」创建策略",
@@ -51,7 +62,9 @@
     "saveError": "保存失败",
     "deleteError": "删除失败",
     "confirmDelete": "确定删除策略 \"{name}\" 吗？",
-    "fillRequired": "请填写策略名称和ID"
+    "fillRequired": "请填写策略名称和ID",
+    "riskPlaceholder": "风控策略功能即将上线",
+    "flowPlaceholder": "策略流功能即将上线"
   },
   "backtest": {
     "title": "回测中心",
@@ -112,6 +125,7 @@
     "generatedAt": "生成时间",
     "stocks": "只标的",
     "noWeeklyYet": "暂无本周选股结果，内置策略将在每周五收盘后自动运行",
+    "runWeeklyNow": "立即选股",
     "createBacktest": "一键创建回测",
     "importFromPool": "从股票池导入",
     "andMore": "等 {count} 只",
@@ -131,6 +145,33 @@
       "failed": "失败"
     }
   },
+  "risk": {
+    "configTitle": "风控规则配置",
+    "maxPositionPct": "单票最大仓位",
+    "maxDailyDrawdown": "日最大回撤",
+    "blacklist": "黑名单",
+    "blacklistPlaceholder": "多个股票代码用逗号分隔，例如: 000001,000002"
+  },
+  "flow": {
+    "list": "策略流列表",
+    "new": "新建策略流",
+    "editorPlaceholder": "请从左侧选择一个策略流，或点击「新建」创建",
+    "flowId": "策略流ID",
+    "saveSuccess": "保存成功",
+    "createSuccess": "创建成功",
+    "deleteSuccess": "删除成功",
+    "saveError": "保存失败",
+    "deleteError": "删除失败",
+    "confirmDelete": "确定删除策略流 \"{name}\" 吗？",
+    "fillRequired": "请填写策略流名称、ID 和交易策略",
+    "pickerNode": "选股节点",
+    "riskNode": "风控节点",
+    "tradeNode": "交易节点",
+    "noPicker": "不绑定选股策略",
+    "noRisk": "不绑定风控策略",
+    "selectTrade": "请选择交易策略（必填）",
+    "runHint": "该策略流将自动执行选股与风控节点"
+  },
   "manual": {
     "title": "使用手册",
     "introTitle": "欢迎使用 Quant Trading App",
@@ -139,10 +180,12 @@
     "steps": {
       "strategy": {
         "title": "编写策略",
-        "desc": "在策略工坊中使用 Python 编写你的量化策略。系统内置了 CodeMirror 编辑器，支持语法高亮与持久化存储。",
+        "desc": "在策略工坊中使用 Python 编写你的量化策略。策略工坊统一包含选股、交易、风控、策略流四个子页面。",
         "item1": "点击「新建策略」，填写策略名称与唯一 ID",
-        "item2": "在编辑器中编写基于 akquant 的 Python 策略代码",
-        "item3": "保存后可在列表中随时查看、编辑或删除策略"
+        "item2": "选股策略：基于 akshare 获取市场数据，编写自定义选股逻辑",
+        "item3": "交易策略：在 CodeMirror 编辑器中编写基于 akquant 的 Python 策略代码",
+        "item4": "风控策略：配置仓位上限、日回撤、黑名单等规则，或编写 risk_check(context) 扩展",
+        "item5": "策略流：将选股、风控、交易策略绑定为流水线，实现自动执行"
       },
       "backtest": {
         "title": "运行回测",
@@ -170,7 +213,7 @@
       "stockPicker": {
         "title": "选股策略",
         "desc": "使用 akshare 获取全市场 A 股数据，编写自定义选股逻辑，或直接使用系统内置的每周自动选股策略。",
-        "item1": "进入选股策略页面，系统已内置每周五自动运行的量价活跃选股策略",
+        "item1": "进入策略工坊的「选股策略」页面，系统已内置每周五自动运行的量价活跃选股策略",
         "item2": "你可以修改内置策略代码，也可以新建自己的选股策略",
         "item3": "运行选股后得到股票池，可直接「一键创建回测」或导入模拟盘标的",
         "item4": "在推送设置中开关每周选股自动提醒，未来可扩展至微信/邮件通知"
@@ -183,6 +226,8 @@
     "tip4": "在模拟盘监控页面点击「账户设置」可自定义佣金率、印花税率与过户费率",
     "tip5": "当侧边栏「模拟盘监控」出现红色数字 badge 时，表示有超时未同步的信号需要处理",
     "tip6": "遇到问题可查看后端 OpenAPI 文档：启动服务后访问 /docs",
-    "tip7": "选股策略的「本周选股」每周五 15:05 自动更新，侧边栏会显示新标的红点提示"
+    "tip7": "选股策略的「本周选股」每周五 15:05 自动更新，侧边栏会显示新标的红点提示",
+    "tip8": "策略流采用强绑定机制，子策略更新后无需重新创建回测或模拟盘即可自动生效",
+    "tip9": "风控策略的表单配置适合快速设定基础规则，代码扩展适合实现复杂的自定义风控逻辑"
   }
 }

@@ -3,7 +3,7 @@ import uuid
 import json
 from typing import Any, List
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.strategy import Strategy
 from app.models.stock_picker import StockPool, StockPoolItem, PickerRun, NotificationSettings
@@ -355,6 +355,8 @@ def execute_picker(db: Session, picker_id: str) -> StockPool:
         run.finished_at = datetime.datetime.utcnow()
         db.commit()
         db.refresh(pool)
+        # 强制触发 items 懒加载，确保 FastAPI 序列化时数据已填充
+        _ = pool.items
         return pool
     except Exception as e:
         run.status = "failed"
@@ -365,14 +367,14 @@ def execute_picker(db: Session, picker_id: str) -> StockPool:
 
 
 def get_stock_pools(db: Session, picker_id: str | None = None, skip: int = 0, limit: int = 100):
-    q = db.query(StockPool)
+    q = db.query(StockPool).options(selectinload(StockPool.items))
     if picker_id:
         q = q.filter(StockPool.picker_id == picker_id)
     return q.order_by(StockPool.generated_at.desc()).offset(skip).limit(limit).all()
 
 
 def get_stock_pool(db: Session, pool_id: str) -> StockPool | None:
-    return db.query(StockPool).filter(StockPool.pool_id == pool_id).first()
+    return db.query(StockPool).options(selectinload(StockPool.items)).filter(StockPool.pool_id == pool_id).first()
 
 
 def get_picker_runs(db: Session, picker_id: str | None = None, skip: int = 0, limit: int = 100):
@@ -383,7 +385,7 @@ def get_picker_runs(db: Session, picker_id: str | None = None, skip: int = 0, li
 
 
 def get_weekly_picker_summary(db: Session) -> dict:
-    pool = db.query(StockPool).filter(StockPool.is_builtin_weekly == True).first()
+    pool = db.query(StockPool).options(selectinload(StockPool.items)).filter(StockPool.is_builtin_weekly == True).first()
     if not pool:
         return {"has_new_weekly": False, "pool": None, "generated_at": None, "item_count": 0}
     return {

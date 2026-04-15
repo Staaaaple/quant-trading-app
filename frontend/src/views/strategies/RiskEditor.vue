@@ -5,6 +5,7 @@ import { Codemirror } from 'vue-codemirror'
 import { python } from '@codemirror/lang-python'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { strategyApi, type Strategy } from '@/api/strategy'
+import { riskStrategyApi, type RiskStrategyConfig } from '@/api/riskStrategy'
 import LoadingOverlay from '@/components/LoadingOverlay.vue'
 
 const { t } = useI18n()
@@ -20,6 +21,10 @@ const showEditor = ref(false)
 const loading = ref(false)
 const toast = ref('')
 
+const maxPositionPct = ref(0.2)
+const maxDailyDrawdown = ref(0.05)
+const blacklist = ref('')
+
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 function showToast(msg: string) {
@@ -30,10 +35,23 @@ function showToast(msg: string) {
 
 async function loadStrategies() {
   try {
-    strategies.value = await strategyApi.list()
+    strategies.value = await strategyApi.list('?strategy_type=risk')
   } catch (e: any) {
     console.error('loadStrategies failed:', e)
     strategies.value = []
+  }
+}
+
+async function loadRiskConfig(s: Strategy) {
+  try {
+    const cfg = await riskStrategyApi.get(s.strategy_id)
+    maxPositionPct.value = cfg.max_position_pct
+    maxDailyDrawdown.value = cfg.max_daily_drawdown
+    blacklist.value = cfg.blacklist
+  } catch {
+    maxPositionPct.value = 0.2
+    maxDailyDrawdown.value = 0.05
+    blacklist.value = ''
   }
 }
 
@@ -43,19 +61,25 @@ function selectStrategy(s: Strategy) {
   name.value = s.name
   strategyId.value = s.strategy_id
   isEditing.value = true
+  loadRiskConfig(s)
 }
 
 function createNew() {
   currentStrategy.value = null
-  code.value = `from akquant import Strategy
-
-class MyStrategy(Strategy):
-    def on_bar(self, bar):
-        pass
+  code.value = `def risk_check(context):
+    """
+    风控检查函数。
+    context 包含: portfolio, positions, orders, current_date 等信息。
+    返回 dict: {"passed": bool, "reason": str}
+    """
+    return {"passed": True, "reason": ""}
 `
   name.value = ''
-  strategyId.value = 'strategy_' + Date.now()
+  strategyId.value = 'risk_' + Date.now()
   isEditing.value = true
+  maxPositionPct.value = 0.2
+  maxDailyDrawdown.value = 0.05
+  blacklist.value = ''
 }
 
 async function saveStrategy() {
@@ -70,12 +94,24 @@ async function saveStrategy() {
         name: name.value,
         code: code.value,
       })
+      await riskStrategyApi.update(currentStrategy.value.strategy_id, {
+        max_position_pct: maxPositionPct.value,
+        max_daily_drawdown: maxDailyDrawdown.value,
+        blacklist: blacklist.value,
+      })
       showToast(t('strategy.saveSuccess'))
     } else {
       await strategyApi.create({
         strategy_id: strategyId.value,
         name: name.value,
         code: code.value,
+        type: 'risk',
+      })
+      await riskStrategyApi.create({
+        strategy_id: strategyId.value,
+        max_position_pct: maxPositionPct.value,
+        max_daily_drawdown: maxDailyDrawdown.value,
+        blacklist: blacklist.value,
       })
       showToast(t('strategy.createSuccess'))
       currentStrategy.value = await strategyApi.get(strategyId.value)
@@ -146,7 +182,7 @@ onBeforeUnmount(() => {
       </ul>
     </aside>
 
-    <!-- Right panel: editor -->
+    <!-- Right panel: editor + config -->
     <main class="panel panel--right">
       <div v-if="!isEditing" class="empty-state">
         <div class="empty-icon">
@@ -193,6 +229,24 @@ onBeforeUnmount(() => {
             :tab-size="4"
           />
         </div>
+
+        <div class="config-section">
+          <h4 class="config-title">{{ t('risk.configTitle') }}</h4>
+          <div class="config-grid">
+            <div class="config-field">
+              <label>{{ t('risk.maxPositionPct') }}</label>
+              <input v-model.number="maxPositionPct" type="number" step="0.01" min="0" max="1" class="form-input" />
+            </div>
+            <div class="config-field">
+              <label>{{ t('risk.maxDailyDrawdown') }}</label>
+              <input v-model.number="maxDailyDrawdown" type="number" step="0.01" min="0" max="1" class="form-input" />
+            </div>
+            <div class="config-field full">
+              <label>{{ t('risk.blacklist') }}</label>
+              <input v-model="blacklist" type="text" class="form-input" :placeholder="t('risk.blacklistPlaceholder')" />
+            </div>
+          </div>
+        </div>
       </template>
     </main>
 
@@ -203,7 +257,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .workshop {
   display: flex;
-  height: calc(100vh - var(--header-height) - (var(--space-3xl) * 2));
+  height: calc(100vh - var(--header-height) - (var(--space-3xl) * 2) - 60px);
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
@@ -226,6 +280,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   background: var(--bg-base);
+  overflow-y: auto;
 }
 
 .panel-header {
@@ -338,6 +393,7 @@ onBeforeUnmount(() => {
   padding: var(--space-lg) var(--space-2xl);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-surface);
+  flex-wrap: wrap;
 }
 
 .toolbar-fields {
@@ -372,7 +428,7 @@ onBeforeUnmount(() => {
 }
 
 .editor-body {
-  flex: 1;
+  height: 280px;
   overflow: hidden;
   padding: var(--space-lg);
 }
@@ -381,5 +437,43 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   overflow: hidden;
+}
+
+.config-section {
+  padding: var(--space-xl) var(--space-2xl);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.config-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-md);
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.config-field.full {
+  grid-column: 1 / -1;
+}
+
+.config-field label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.config-field .form-input {
+  width: 100%;
 }
 </style>

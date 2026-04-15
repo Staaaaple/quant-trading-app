@@ -4,14 +4,17 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { backtestApi, type Backtest } from '@/api/backtest'
 import { strategyApi, type Strategy } from '@/api/strategy'
+import { strategyFlowApi, type StrategyFlow } from '@/api/strategyFlow'
 import { stockPickerApi, type StockPool } from '@/api/stockPicker'
 import SparklineChart from '@/components/SparklineChart.vue'
+import LoadingOverlay from '@/components/LoadingOverlay.vue'
 
 const { t } = useI18n()
 const route = useRoute()
 
 const backtests = ref<Backtest[]>([])
 const strategies = ref<Strategy[]>([])
+const flows = ref<StrategyFlow[]>([])
 const stockPools = ref<StockPool[]>([])
 const loading = ref(false)
 const toast = ref('')
@@ -50,10 +53,20 @@ async function loadBacktests() {
 }
 
 async function loadStrategies() {
-  strategies.value = await strategyApi.list('?strategy_type=trade')
-  if (strategies.value.length && !newBacktest.value.strategy_id) {
-    newBacktest.value.strategy_id = strategies.value[0]!.strategy_id
+  const [s, f] = await Promise.all([
+    strategyApi.list('?strategy_type=trade'),
+    strategyFlowApi.list(),
+  ])
+  strategies.value = s
+  flows.value = f
+  const allIds = [...s.map(x => x.strategy_id), ...f.map(x => x.flow_id)]
+  if (allIds.length && !newBacktest.value.strategy_id) {
+    newBacktest.value.strategy_id = allIds[0]!
   }
+}
+
+function isFlow(id: string) {
+  return flows.value.some(f => f.flow_id === id)
 }
 
 async function loadStockPools() {
@@ -189,10 +202,20 @@ onMounted(() => {
           <div class="form-group">
             <label>{{ t('common.strategy') }}</label>
             <select v-model="newBacktest.strategy_id" class="form-input">
-              <option v-for="s in strategies" :key="s.strategy_id" :value="s.strategy_id">
-                {{ s.name }}
-              </option>
+              <optgroup :label="t('strategy.tabs.trade')">
+                <option v-for="s in strategies" :key="s.strategy_id" :value="s.strategy_id">
+                  {{ s.name }}
+                </option>
+              </optgroup>
+              <optgroup :label="t('strategy.tabs.flow')">
+                <option v-for="f in flows" :key="f.flow_id" :value="f.flow_id">
+                  {{ f.name }}
+                </option>
+              </optgroup>
             </select>
+            <div v-if="isFlow(newBacktest.strategy_id)" class="flow-hint">
+              {{ t('flow.runHint') }}
+            </div>
           </div>
           <div class="form-group">
             <label>{{ t('common.symbols') }}</label>
@@ -281,6 +304,8 @@ onMounted(() => {
         </tbody>
       </table>
     </div>
+
+    <LoadingOverlay :visible="loading" :text="t('common.loading')" />
   </div>
 </template>
 
@@ -440,5 +465,11 @@ onMounted(() => {
 .pool-select {
   margin-top: var(--space-sm);
   font-size: 0.85rem;
+}
+
+.flow-hint {
+  margin-top: var(--space-sm);
+  font-size: 0.8rem;
+  color: var(--accent);
 }
 </style>

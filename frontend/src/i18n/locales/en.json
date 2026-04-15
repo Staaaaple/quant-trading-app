@@ -39,8 +39,19 @@
     "total": "Total",
     "pending": "Pending"
   },
+  "home": {
+    "noWeeklyYet": "No weekly picks yet"
+  },
   "strategy": {
     "title": "Strategy Workshop",
+    "riskTitle": "Risk Strategy",
+    "flowTitle": "Strategy Flow",
+    "tabs": {
+      "picker": "Stock Picker",
+      "trade": "Trade Strategy",
+      "risk": "Risk",
+      "flow": "Flow"
+    },
     "list": "Strategy List",
     "new": "New Strategy",
     "editorPlaceholder": "Select a strategy from the left or click \"New\" to create one",
@@ -51,7 +62,9 @@
     "saveError": "Failed to save",
     "deleteError": "Failed to delete",
     "confirmDelete": "Are you sure you want to delete strategy \"{name}\"?",
-    "fillRequired": "Please fill in the strategy name and ID"
+    "fillRequired": "Please fill in the strategy name and ID",
+    "riskPlaceholder": "Risk strategy feature coming soon",
+    "flowPlaceholder": "Strategy flow feature coming soon"
   },
   "backtest": {
     "title": "Backtest Center",
@@ -112,6 +125,7 @@
     "generatedAt": "Generated at",
     "stocks": "stocks",
     "noWeeklyYet": "No weekly picks yet. The built-in strategy runs automatically after market close every Friday.",
+    "runWeeklyNow": "Run Now",
     "createBacktest": "Create Backtest",
     "importFromPool": "Import from pool",
     "andMore": "and {count} more",
@@ -131,6 +145,33 @@
       "failed": "Failed"
     }
   },
+  "risk": {
+    "configTitle": "Risk Config",
+    "maxPositionPct": "Max Position %",
+    "maxDailyDrawdown": "Max Daily Drawdown",
+    "blacklist": "Blacklist",
+    "blacklistPlaceholder": "Comma-separated symbols, e.g. 000001,000002"
+  },
+  "flow": {
+    "list": "Strategy Flows",
+    "new": "New Flow",
+    "editorPlaceholder": "Select a flow from the left or click New to create one",
+    "flowId": "Flow ID",
+    "saveSuccess": "Saved successfully",
+    "createSuccess": "Created successfully",
+    "deleteSuccess": "Deleted successfully",
+    "saveError": "Failed to save",
+    "deleteError": "Failed to delete",
+    "confirmDelete": "Are you sure you want to delete flow \"{name}\"?",
+    "fillRequired": "Please fill in the flow name, ID and select a trade strategy",
+    "pickerNode": "Picker Node",
+    "riskNode": "Risk Node",
+    "tradeNode": "Trade Node",
+    "noPicker": "No picker",
+    "noRisk": "No risk control",
+    "selectTrade": "Select a trade strategy (required)",
+    "runHint": "This strategy flow will automatically run the picker and risk nodes"
+  },
   "manual": {
     "title": "User Manual",
     "introTitle": "Welcome to Quant Trading App",
@@ -139,10 +180,12 @@
     "steps": {
       "strategy": {
         "title": "Write a Strategy",
-        "desc": "Use the Strategy Workshop to write Python-based quant strategies with the built-in CodeMirror editor and persistent storage.",
+        "desc": "Use the Strategy Workshop to write Python-based quant strategies. The workshop now unifies four tabs: picker, trade, risk, and flow.",
         "item1": "Click New Strategy and fill in the name and unique ID",
-        "item2": "Write your strategy code based on the akquant framework",
-        "item3": "Save and manage your strategies from the list anytime"
+        "item2": "Stock Picker: fetch market data via akshare and write custom screening logic",
+        "item3": "Trade Strategy: write akquant-based Python strategy code in the CodeMirror editor",
+        "item4": "Risk Strategy: configure position limits, daily drawdown, and blacklist, or write a risk_check(context) extension",
+        "item5": "Strategy Flow: bind picker + risk + trade into a pipeline for automated execution"
       },
       "backtest": {
         "title": "Run Backtests",
@@ -170,7 +213,7 @@
       "stockPicker": {
         "title": "Stock Pickers",
         "desc": "Use akshare to fetch A-share market data, write custom screening logic, or use the built-in weekly auto-picker.",
-        "item1": "Go to the Stock Picker page; a built-in volume-momentum picker is scheduled every Friday",
+        "item1": "Go to the Stock Picker tab in the Strategy Workshop; a built-in volume-momentum picker is scheduled every Friday",
         "item2": "Edit the built-in code or create your own custom picker",
         "item3": "Run a picker to generate a stock pool, then create a backtest or import symbols directly",
         "item4": "Toggle weekly push reminders in settings; future support for WeChat/email notifications is planned"
@@ -183,6 +226,8 @@
     "tip4": "Click Account Settings on the Paper Trading page to customize commission rate, stamp tax, and transfer fee",
     "tip5": "When a red badge appears next to Paper Trading in the sidebar, it means there are overdue unsynced signals",
     "tip6": "For troubleshooting, check the backend OpenAPI docs at /docs after starting the server",
-    "tip7": "Weekly picks update every Friday at 15:05; a red badge on Stock Pickers means new picks are available"
+    "tip7": "Weekly picks update every Friday at 15:05; a red badge on Stock Pickers means new picks are available",
+    "tip8": "Strategy flows use strong binding—child strategy updates automatically take effect without recreating backtests or sessions",
+    "tip9": "Risk strategy form configs are great for quick rule setup, while code extensions suit complex custom risk logic"
   }
 }
