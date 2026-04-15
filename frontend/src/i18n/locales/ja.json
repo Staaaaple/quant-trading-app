@@ -1,0 +1,90 @@
+{
+  "app": {
+    "name": "量化トレード",
+    "language": "言語"
+  },
+  "nav": {
+    "home": "ホーム",
+    "strategies": "戦略工房",
+    "backtests": "バックテスト",
+    "paperTrading": "模擬取引"
+  },
+  "common": {
+    "create": "作成",
+    "save": "保存",
+    "delete": "削除",
+    "cancel": "キャンセル",
+    "run": "実行",
+    "stop": "停止",
+    "loading": "読み込み中...",
+    "saving": "保存中...",
+    "creating": "作成中...",
+    "confirmDelete": "削除してもよろしいですか？",
+    "empty": "データがありません",
+    "id": "ID",
+    "name": "名前",
+    "strategy": "戦略",
+    "symbols": "銘柄",
+    "startDate": "開始日",
+    "endDate": "終了日",
+    "initialCash": "初期資金",
+    "status": "状態",
+    "metrics": "指標",
+    "operations": "操作",
+    "logs": "ログ",
+    "success": "成功",
+    "error": "エラー",
+    "total": "合計",
+    "pending": "待機中"
+  },
+  "strategy": {
+    "title": "戦略工房",
+    "list": "戦略一覧",
+    "new": "新規戦略",
+    "editorPlaceholder": "左側から戦略を選択するか、「新規」をクリックしてください",
+    "strategyId": "戦略ID",
+    "saveSuccess": "保存しました",
+    "createSuccess": "作成しました",
+    "deleteSuccess": "削除しました",
+    "saveError": "保存に失敗しました",
+    "deleteError": "削除に失敗しました",
+    "confirmDelete": "戦略 \"{name}\" を削除してもよろしいですか？",
+    "fillRequired": "戦略名とIDを入力してください"
+  },
+  "backtest": {
+    "title": "バックテスト",
+    "new": "新規バックテスト",
+    "backtestId": "バックテストID",
+    "dateRange": "期間",
+    "createSuccess": "作成しました",
+    "createError": "作成に失敗しました",
+    "runSuccess": "バックテストを実行しました",
+    "runError": "実行に失敗しました",
+    "fillRequired": "バックテストIDと戦略を選択してください",
+    "totalReturn": "収益率",
+    "sharpeRatio": "シャープレシオ",
+    "maxDrawdown": "最大ドローダウン"
+  },
+  "paperTrading": {
+    "title": "模擬取引",
+    "newSession": "新規セッション",
+    "sessionId": "セッションID",
+    "signals": "シグナル",
+    "createSuccess": "作成しました",
+    "createError": "作成に失敗しました",
+    "runSuccess": "模擬取引を実行しました",
+    "runError": "実行に失敗しました",
+    "stopSuccess": "模擬取引を停止しました",
+    "stopError": "停止に失敗しました",
+    "fillRequired": "セッションIDと戦略を選択してください"
+  },
+  "status": {
+    "pending": "待機中",
+    "running": "実行中",
+    "success": "成功",
+    "failed": "失敗",
+    "idle": "待機",
+    "stopped": "停止",
+    "error": "エラー"
+  }
+}

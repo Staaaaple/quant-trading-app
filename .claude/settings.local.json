@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show:*)",
+      "Bash(python -c \"import akshare; print\\(dir\\(akshare\\)\\)\")",
+      "Bash(conda activate:*)",
+      "Bash(python -c \"import akquant; help\\(akquant\\)\")",
+      "Bash(ls -la /opt/anaconda3/envs/finance/lib/python3.13/site-packages/akquant/live*)",
+      "Bash(python -c \"import akquant; print\\(dir\\(akquant\\)\\)\")",
+      "Bash(conda create:*)",
+      "Bash(conda run:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s http://localhost:5174/)",
+      "Bash(python3 -c \"import playwright; print\\('ok'\\)\")",
+      "Bash(curl -s http://localhost:5174/src/assets/base.css)"
+    ]
+  }
+}

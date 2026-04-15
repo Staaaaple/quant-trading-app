@@ -1,0 +1,90 @@
+{
+  "app": {
+    "name": "Quant Trading",
+    "language": "Language"
+  },
+  "nav": {
+    "home": "Home",
+    "strategies": "Strategies",
+    "backtests": "Backtests",
+    "paperTrading": "Paper Trading"
+  },
+  "common": {
+    "create": "Create",
+    "save": "Save",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "run": "Run",
+    "stop": "Stop",
+    "loading": "Loading...",
+    "saving": "Saving...",
+    "creating": "Creating...",
+    "confirmDelete": "Are you sure you want to delete?",
+    "empty": "No data",
+    "id": "ID",
+    "name": "Name",
+    "strategy": "Strategy",
+    "symbols": "Symbols",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "initialCash": "Initial Cash",
+    "status": "Status",
+    "metrics": "Metrics",
+    "operations": "Actions",
+    "logs": "Logs",
+    "success": "Success",
+    "error": "Error",
+    "total": "Total",
+    "pending": "Pending"
+  },
+  "strategy": {
+    "title": "Strategy Workshop",
+    "list": "Strategy List",
+    "new": "New Strategy",
+    "editorPlaceholder": "Select a strategy from the left or click \"New\" to create one",
+    "strategyId": "Strategy ID",
+    "saveSuccess": "Saved successfully",
+    "createSuccess": "Created successfully",
+    "deleteSuccess": "Deleted successfully",
+    "saveError": "Failed to save",
+    "deleteError": "Failed to delete",
+    "confirmDelete": "Are you sure you want to delete strategy \"{name}\"?",
+    "fillRequired": "Please fill in the strategy name and ID"
+  },
+  "backtest": {
+    "title": "Backtest Center",
+    "new": "New Backtest",
+    "backtestId": "Backtest ID",
+    "dateRange": "Date Range",
+    "createSuccess": "Created successfully",
+    "createError": "Failed to create",
+    "runSuccess": "Backtest run successfully",
+    "runError": "Failed to run",
+    "fillRequired": "Please fill in the backtest ID and select a strategy",
+    "totalReturn": "Return",
+    "sharpeRatio": "Sharpe",
+    "maxDrawdown": "Drawdown"
+  },
+  "paperTrading": {
+    "title": "Paper Trading",
+    "newSession": "New Session",
+    "sessionId": "Session ID",
+    "signals": "Signals",
+    "createSuccess": "Created successfully",
+    "createError": "Failed to create",
+    "runSuccess": "Paper trading run successfully",
+    "runError": "Failed to run",
+    "stopSuccess": "Paper trading stopped",
+    "stopError": "Failed to stop",
+    "fillRequired": "Please fill in the session ID and select a strategy"
+  },
+  "status": {
+    "pending": "Pending",
+    "running": "Running",
+    "success": "Success",
+    "failed": "Failed",
+    "idle": "Idle",
+    "stopped": "Stopped",
+    "error": "Error"
+  }
+}
