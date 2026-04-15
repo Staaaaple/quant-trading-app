@@ -7,7 +7,9 @@
     "home": "首页",
     "strategies": "策略工坊",
     "backtests": "回测中心",
-    "paperTrading": "模拟盘监控"
+    "paperTrading": "模拟盘监控",
+    "stockPickers": "选股策略",
+    "manual": "使用手册"
   },
   "common": {
     "create": "创建",
@@ -86,5 +88,101 @@
     "idle": "空闲",
     "stopped": "已停止",
     "error": "错误"
+  },
+  "stockPicker": {
+    "title": "选股策略",
+    "list": "选股列表",
+    "new": "新建选股",
+    "editorPlaceholder": "请从左侧选择一个选股策略，或点击「新建」创建",
+    "pickerId": "选股ID",
+    "saveSuccess": "保存成功",
+    "createSuccess": "创建成功",
+    "deleteSuccess": "删除成功",
+    "saveError": "保存失败",
+    "deleteError": "删除失败",
+    "runSuccess": "选股完成，共选出 {count} 只标的",
+    "runError": "选股运行失败",
+    "running": "运行中...",
+    "run": "运行选股",
+    "fillRequired": "请填写选股策略名称和ID",
+    "confirmDelete": "确定删除选股策略 \"{name}\" 吗？",
+    "cannotDeleteBuiltin": "不能删除内置策略",
+    "builtin": "内置",
+    "weeklyTitle": "本周选股",
+    "generatedAt": "生成时间",
+    "stocks": "只标的",
+    "noWeeklyYet": "暂无本周选股结果，内置策略将在每周五收盘后自动运行",
+    "createBacktest": "一键创建回测",
+    "importFromPool": "从股票池导入",
+    "andMore": "等 {count} 只",
+    "recentResults": "最近选股结果",
+    "runHistory": "运行历史",
+    "runTime": "运行时间",
+    "resultCount": "结果数量",
+    "settings": "推送设置",
+    "settingsTitle": "选股推送设置",
+    "settingsSaved": "设置已保存",
+    "settingsError": "保存设置失败",
+    "weeklyPushLabel": "每周五收盘后自动运行内置选股并推送结果",
+    "status": {
+      "pending": "待运行",
+      "running": "运行中",
+      "success": "成功",
+      "failed": "失败"
+    }
+  },
+  "manual": {
+    "title": "使用手册",
+    "introTitle": "欢迎使用 Quant Trading App",
+    "introDesc": "这是一个面向个人量化投资者的全栈量化交易平台。你可以在这里编写策略、运行回测、监控模拟盘，并同步真实持仓。按照下方的五步流程，即可快速上手。",
+    "goTo": "前往",
+    "steps": {
+      "strategy": {
+        "title": "编写策略",
+        "desc": "在策略工坊中使用 Python 编写你的量化策略。系统内置了 CodeMirror 编辑器，支持语法高亮与持久化存储。",
+        "item1": "点击「新建策略」，填写策略名称与唯一 ID",
+        "item2": "在编辑器中编写基于 akquant 的 Python 策略代码",
+        "item3": "保存后可在列表中随时查看、编辑或删除策略"
+      },
+      "backtest": {
+        "title": "运行回测",
+        "desc": "在回测中心为已保存的策略配置参数并运行历史数据回测，验证策略有效性。",
+        "item1": "选择你要验证的策略",
+        "item2": "设置回测标的、时间范围与初始资金",
+        "item3": "点击运行，查看收益、夏普比率与最大回撤等指标"
+      },
+      "paperTrading": {
+        "title": "模拟盘监控",
+        "desc": "将策略接入 akquant 的 Paper Trading 模式，在无真实资金风险的环境下观察策略表现。",
+        "item1": "新建模拟盘会话并绑定策略",
+        "item2": "启动后会话将实时产生交易信号与模拟持仓",
+        "item3": "监控盈亏变化，为真实交易提供决策参考"
+      },
+      "sync": {
+        "title": "真实持仓同步",
+        "desc": "采用双账本并行机制，在券商 APP 完成真实交易后，回填实际成交数据，实现模拟盘与真实持仓的对账。支持费用自动计算、CSV 批量导入与批量补录。",
+        "item1": "模拟账本由 akquant 自动维护，运行模拟盘后产生交易信号",
+        "item2": "在持仓同步页面一键同步真实成交，系统根据账户设置自动计算佣金、印花税与过户费",
+        "item3": "支持导入 CSV 交割单批量写入真实成交，并自动更新持仓",
+        "item4": "使用批量补录模式勾选多条 pending 信号，一次提交完成批量同步",
+        "item5": "通过「对账单」查看每日持仓差异、未同步信号与真实盈亏"
+      },
+      "stockPicker": {
+        "title": "选股策略",
+        "desc": "使用 akshare 获取全市场 A 股数据，编写自定义选股逻辑，或直接使用系统内置的每周自动选股策略。",
+        "item1": "进入选股策略页面，系统已内置每周五自动运行的量价活跃选股策略",
+        "item2": "你可以修改内置策略代码，也可以新建自己的选股策略",
+        "item3": "运行选股后得到股票池，可直接「一键创建回测」或导入模拟盘标的",
+        "item4": "在推送设置中开关每周选股自动提醒，未来可扩展至微信/邮件通知"
+      }
+    },
+    "tipsTitle": "使用小贴士",
+    "tip1": "建议先通过回测验证策略逻辑，再开启模拟盘长期观察",
+    "tip2": "策略代码修改后，已有的回测与模拟盘不会自动更新，需要重新创建",
+    "tip3": "真实持仓同步支持未来平滑扩展至 MiniQMT 自动交易接入",
+    "tip4": "在模拟盘监控页面点击「账户设置」可自定义佣金率、印花税率与过户费率",
+    "tip5": "当侧边栏「模拟盘监控」出现红色数字 badge 时，表示有超时未同步的信号需要处理",
+    "tip6": "遇到问题可查看后端 OpenAPI 文档：启动服务后访问 /docs",
+    "tip7": "选股策略的「本周选股」每周五 15:05 自动更新，侧边栏会显示新标的红点提示"
   }
 }

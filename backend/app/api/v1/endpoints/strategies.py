@@ -29,8 +29,9 @@ def list_strategies(
     db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 100,
+    strategy_type: str | None = None,
 ):
-    return strategy_service.get_strategies(db, skip=skip, limit=limit)
+    return strategy_service.get_strategies(db, skip=skip, limit=limit, strategy_type=strategy_type)
 
 
 @router.get("/{strategy_id}", response_model=StrategyRead)

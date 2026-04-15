@@ -6,8 +6,10 @@ from app.schemas.paper_trading import (
     PaperTradingSessionCreate,
     PaperTradingSessionRead,
     PaperTradingSessionUpdate,
+    PaperSignalRead,
 )
 from app.services import paper_trading_service
+from app.models.paper_trading import PaperSignal
 
 router = APIRouter()
 
@@ -113,3 +115,20 @@ def stop_session(
         )
     update = PaperTradingSessionUpdate(status="stopped")
     return paper_trading_service.update_session(db, db_obj, update)
+
+
+@router.get("/signals", response_model=list[PaperSignalRead])
+def list_signals(
+    *,
+    db: Session = Depends(get_db),
+    strategy_id: str | None = None,
+    status: str | None = None,
+    skip: int = 0,
+    limit: int = 100,
+):
+    query = db.query(PaperSignal).order_by(PaperSignal.signal_at.desc())
+    if strategy_id:
+        query = query.filter(PaperSignal.strategy_id == strategy_id)
+    if status:
+        query = query.filter(PaperSignal.status == status)
+    return query.offset(skip).limit(limit).all()

@@ -4,6 +4,7 @@ export interface Strategy {
   id: number
   strategy_id: string
   name: string
+  type: string
   code: string
   created_at: string
   updated_at: string
@@ -13,6 +14,7 @@ export interface StrategyCreatePayload {
   strategy_id: string
   name: string
   code: string
+  type?: string
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -33,8 +35,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const strategyApi = {
-  list(): Promise<Strategy[]> {
-    return request('/strategies')
+  list(query?: string): Promise<Strategy[]> {
+    return request(`/strategies${query || ''}`)
   },
   get(strategy_id: string): Promise<Strategy> {
     return request(`/strategies/${strategy_id}`)

@@ -5,6 +5,7 @@ from datetime import datetime
 class StrategyBase(BaseModel):
     strategy_id: str
     name: str
+    type: str = "trade"
     description: str | None = None
     code: str
 

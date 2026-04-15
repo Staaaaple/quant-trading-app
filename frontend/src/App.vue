@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { supportedLocales, type SupportedLocale } from './i18n'
+import { syncApi } from './api/sync'
+import { stockPickerApi, type WeeklySummary } from './api/stockPicker'
 
 const route = useRoute()
 const { locale, t } = useI18n()
@@ -16,6 +18,32 @@ function changeLanguage(lang: SupportedLocale) {
   locale.value = lang
   localStorage.setItem('locale', lang)
 }
+
+const pendingSummary = ref({ pending_count: 0, overdue_count: 0 })
+const weeklySummary = ref<WeeklySummary>({ has_new_weekly: false, item_count: 0 })
+
+async function loadPendingSummary() {
+  try {
+    pendingSummary.value = await syncApi.getPendingSummary()
+  } catch {
+    // ignore
+  }
+}
+
+async function loadWeeklySummary() {
+  try {
+    weeklySummary.value = await stockPickerApi.getWeeklySummary()
+  } catch {
+    // ignore
+  }
+}
+
+onMounted(() => {
+  loadPendingSummary()
+  setInterval(loadPendingSummary, 60000)
+  loadWeeklySummary()
+  setInterval(loadWeeklySummary, 60000)
+})
 </script>
 
 <template>
@@ -45,11 +73,25 @@ function changeLanguage(lang: SupportedLocale) {
           </span>
           <span>{{ t('nav.backtests') }}</span>
         </RouterLink>
+        <RouterLink to="/stock-pickers" class="nav-item" exact-active-class="active">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
+          </span>
+          <span>{{ t('nav.stockPickers') }}</span>
+          <span v-if="weeklySummary.has_new_weekly" class="nav-badge">{{ weeklySummary.item_count }}</span>
+        </RouterLink>
         <RouterLink to="/paper-trading" class="nav-item" exact-active-class="active">
           <span class="nav-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg>
           </span>
           <span>{{ t('nav.paperTrading') }}</span>
+          <span v-if="pendingSummary.overdue_count > 0" class="nav-badge">{{ pendingSummary.overdue_count }}</span>
+        </RouterLink>
+        <RouterLink to="/manual" class="nav-item" exact-active-class="active">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>
+          </span>
+          <span>{{ t('nav.manual') }}</span>
         </RouterLink>
       </nav>
 
@@ -165,6 +207,21 @@ function changeLanguage(lang: SupportedLocale) {
   align-items: center;
   justify-content: center;
   opacity: 0.8;
+}
+
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--error);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  padding: 0 6px;
 }
 
 .lang-switcher {

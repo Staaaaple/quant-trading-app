@@ -7,7 +7,9 @@
     "home": "Home",
     "strategies": "Strategies",
     "backtests": "Backtests",
-    "paperTrading": "Paper Trading"
+    "paperTrading": "Paper Trading",
+    "stockPickers": "Stock Pickers",
+    "manual": "User Manual"
   },
   "common": {
     "create": "Create",
@@ -86,5 +88,101 @@
     "idle": "Idle",
     "stopped": "Stopped",
     "error": "Error"
+  },
+  "stockPicker": {
+    "title": "Stock Pickers",
+    "list": "Picker List",
+    "new": "New Picker",
+    "editorPlaceholder": "Select a picker from the left or click New to create one",
+    "pickerId": "Picker ID",
+    "saveSuccess": "Saved successfully",
+    "createSuccess": "Created successfully",
+    "deleteSuccess": "Deleted successfully",
+    "saveError": "Failed to save",
+    "deleteError": "Failed to delete",
+    "runSuccess": "Picking completed: {count} stocks selected",
+    "runError": "Failed to run picker",
+    "running": "Running...",
+    "run": "Run Picker",
+    "fillRequired": "Please fill in the picker name and ID",
+    "confirmDelete": "Are you sure you want to delete picker \"{name}\"?",
+    "cannotDeleteBuiltin": "Cannot delete the built-in picker",
+    "builtin": "Built-in",
+    "weeklyTitle": "This Week's Picks",
+    "generatedAt": "Generated at",
+    "stocks": "stocks",
+    "noWeeklyYet": "No weekly picks yet. The built-in strategy runs automatically after market close every Friday.",
+    "createBacktest": "Create Backtest",
+    "importFromPool": "Import from pool",
+    "andMore": "and {count} more",
+    "recentResults": "Recent Results",
+    "runHistory": "Run History",
+    "runTime": "Run Time",
+    "resultCount": "Result Count",
+    "settings": "Push Settings",
+    "settingsTitle": "Picker Push Settings",
+    "settingsSaved": "Settings saved",
+    "settingsError": "Failed to save settings",
+    "weeklyPushLabel": "Auto-run built-in picker and push results every Friday after market close",
+    "status": {
+      "pending": "Pending",
+      "running": "Running",
+      "success": "Success",
+      "failed": "Failed"
+    }
+  },
+  "manual": {
+    "title": "User Manual",
+    "introTitle": "Welcome to Quant Trading App",
+    "introDesc": "A full-stack quantitative trading platform for individual investors. Write strategies, run backtests, monitor paper trading, sync real positions, and run stock pickers — all in one place. Follow the five steps below to get started.",
+    "goTo": "Go to",
+    "steps": {
+      "strategy": {
+        "title": "Write a Strategy",
+        "desc": "Use the Strategy Workshop to write Python-based quant strategies with the built-in CodeMirror editor and persistent storage.",
+        "item1": "Click New Strategy and fill in the name and unique ID",
+        "item2": "Write your strategy code based on the akquant framework",
+        "item3": "Save and manage your strategies from the list anytime"
+      },
+      "backtest": {
+        "title": "Run Backtests",
+        "desc": "In the Backtest Center, configure parameters for a saved strategy and run historical backtests to validate its performance.",
+        "item1": "Select the strategy you want to validate",
+        "item2": "Set the symbols, date range, and initial cash",
+        "item3": "Run the backtest and review return, Sharpe ratio, and max drawdown"
+      },
+      "paperTrading": {
+        "title": "Paper Trading Monitor",
+        "desc": "Connect your strategy to akquant's paper trading mode to observe performance without risking real capital.",
+        "item1": "Create a new session and bind it to a strategy",
+        "item2": "Start the session to generate real-time signals and simulated positions",
+        "item3": "Monitor P&L changes to inform real trading decisions"
+      },
+      "sync": {
+        "title": "Real Position Sync",
+        "desc": "Using a dual-ledger design, record your actual broker trades and reconcile them with simulated holdings. Supports auto fee calculation, CSV batch import, and batch sync.",
+        "item1": "The simulated ledger is maintained automatically by akquant after running a paper trading session",
+        "item2": "Use one-click sync on the Paper Trading page; fees are auto-calculated based on your account settings",
+        "item3": "Import CSV settlement statements to bulk-write real trades and automatically update positions",
+        "item4": "Use batch entry mode to select multiple pending signals and sync them all at once",
+        "item5": "Open the Daily Report to review position differences, unsynced signals, and real P&L"
+      },
+      "stockPicker": {
+        "title": "Stock Pickers",
+        "desc": "Use akshare to fetch A-share market data, write custom screening logic, or use the built-in weekly auto-picker.",
+        "item1": "Go to the Stock Picker page; a built-in volume-momentum picker is scheduled every Friday",
+        "item2": "Edit the built-in code or create your own custom picker",
+        "item3": "Run a picker to generate a stock pool, then create a backtest or import symbols directly",
+        "item4": "Toggle weekly push reminders in settings; future support for WeChat/email notifications is planned"
+      }
+    },
+    "tipsTitle": "Tips",
+    "tip1": "It's recommended to validate a strategy via backtest before running paper trading",
+    "tip2": "Changes to a strategy won't automatically update existing backtests or sessions — recreate them if needed",
+    "tip3": "Real position sync is designed to scale smoothly to MiniQMT automated trading in the future",
+    "tip4": "Click Account Settings on the Paper Trading page to customize commission rate, stamp tax, and transfer fee",
+    "tip5": "When a red badge appears next to Paper Trading in the sidebar, it means there are overdue unsynced signals",
+    "tip6": "For troubleshooting, check the backend OpenAPI docs at /docs after starting the server",
+    "tip7": "Weekly picks update every Friday at 15:05; a red badge on Stock Pickers means new picks are available"
   }
 }

@@ -8,8 +8,11 @@ def get_strategy(db: Session, strategy_id: str):
     return db.query(Strategy).filter(Strategy.strategy_id == strategy_id).first()
 
 
-def get_strategies(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(Strategy).offset(skip).limit(limit).all()
+def get_strategies(db: Session, skip: int = 0, limit: int = 100, strategy_type: str | None = None):
+    q = db.query(Strategy)
+    if strategy_type:
+        q = q.filter(Strategy.type == strategy_type)
+    return q.offset(skip).limit(limit).all()
 
 
 def create_strategy(db: Session, obj_in: StrategyCreate):

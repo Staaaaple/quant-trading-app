@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { backtestApi, type Backtest } from '@/api/backtest'
 import { strategyApi, type Strategy } from '@/api/strategy'
+import { stockPickerApi, type StockPool } from '@/api/stockPicker'
 import SparklineChart from '@/components/SparklineChart.vue'
 
 const { t } = useI18n()
+const route = useRoute()
 
 const backtests = ref<Backtest[]>([])
 const strategies = ref<Strategy[]>([])
+const stockPools = ref<StockPool[]>([])
 const loading = ref(false)
 const toast = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -22,6 +26,7 @@ const newBacktest = ref({
   end_date: '2024-03-01',
   initial_cash: 100000,
 })
+const selectedPoolId = ref('')
 
 const summary = computed(() => {
   const total = backtests.value.length
@@ -45,9 +50,24 @@ async function loadBacktests() {
 }
 
 async function loadStrategies() {
-  strategies.value = await strategyApi.list()
+  strategies.value = await strategyApi.list('?strategy_type=trade')
   if (strategies.value.length && !newBacktest.value.strategy_id) {
     newBacktest.value.strategy_id = strategies.value[0]!.strategy_id
+  }
+}
+
+async function loadStockPools() {
+  try {
+    stockPools.value = await stockPickerApi.listPools()
+  } catch {
+    // ignore
+  }
+}
+
+function importFromPool(poolId: string) {
+  const pool = stockPools.value.find(p => p.pool_id === poolId)
+  if (pool && pool.items.length) {
+    newBacktest.value.symbols = pool.items.map(i => i.symbol).join(',')
   }
 }
 
@@ -118,6 +138,14 @@ function returnClass(val: number | undefined) {
 onMounted(() => {
   loadBacktests()
   loadStrategies()
+  loadStockPools()
+  const poolId = route.query.poolId as string | undefined
+  if (poolId) {
+    showCreate.value = true
+    selectedPoolId.value = poolId
+    // Delay import until pools are loaded
+    setTimeout(() => importFromPool(poolId), 300)
+  }
 })
 </script>
 
@@ -169,6 +197,12 @@ onMounted(() => {
           <div class="form-group">
             <label>{{ t('common.symbols') }}</label>
             <input v-model="newBacktest.symbols" type="text" class="form-input" />
+            <select v-model="selectedPoolId" class="form-input pool-select" @change="importFromPool(selectedPoolId)">
+              <option value="">{{ t('stockPicker.importFromPool') }}</option>
+              <option v-for="pool in stockPools" :key="pool.pool_id" :value="pool.pool_id">
+                {{ pool.name }} ({{ pool.items.length }})
+              </option>
+            </select>
           </div>
           <div class="form-group">
             <label>{{ t('common.startDate') }}</label>
@@ -401,5 +435,10 @@ onMounted(() => {
 .text-loss {
   color: var(--loss);
   font-weight: 500;
+}
+
+.pool-select {
+  margin-top: var(--space-sm);
+  font-size: 0.85rem;
 }
 </style>

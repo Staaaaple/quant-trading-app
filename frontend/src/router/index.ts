@@ -28,6 +28,18 @@ const router = createRouter({
       meta: { titleKey: 'paperTrading.title' },
       component: () => import('../views/PaperTradingMonitor.vue'),
     },
+    {
+      path: '/stock-pickers',
+      name: 'stock-pickers',
+      meta: { titleKey: 'stockPicker.title' },
+      component: () => import('../views/StockPicker.vue'),
+    },
+    {
+      path: '/manual',
+      name: 'manual',
+      meta: { titleKey: 'manual.title' },
+      component: () => import('../views/UserManual.vue'),
+    },
   ],
 })
 

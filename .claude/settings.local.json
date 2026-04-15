@@ -12,7 +12,8 @@
       "Bash(npm run:*)",
       "Bash(curl -s http://localhost:5174/)",
       "Bash(python3 -c \"import playwright; print\\('ok'\\)\")",
-      "Bash(curl -s http://localhost:5174/src/assets/base.css)"
+      "Bash(curl -s http://localhost:5174/src/assets/base.css)",
+      "Bash(python -c ' *)"
     ]
   }
 }
