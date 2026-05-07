@@ -5,13 +5,16 @@ import { Codemirror } from 'vue-codemirror'
 import { python } from '@codemirror/lang-python'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { strategyApi, type Strategy } from '@/api/strategy'
+import { dnaApi, type StrategyDNASummary, type DNAPreview } from '@/api/dna'
 import LoadingOverlay from '@/components/LoadingOverlay.vue'
+import GenePanel from '@/components/GenePanel.vue'
 
 const { t } = useI18n()
 const extensions = [python(), oneDark]
 
 const strategies = ref<Strategy[]>([])
 const currentStrategy = ref<Strategy | null>(null)
+const dnaSummaries = ref<StrategyDNASummary[]>([])
 const code = ref('')
 const name = ref('')
 const strategyId = ref('')
@@ -21,6 +24,11 @@ const loading = ref(false)
 const toast = ref('')
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
+const previewData = ref<DNAPreview | null>(null)
+const previewLoading = ref(false)
+const previewError = ref('')
 
 function showToast(msg: string) {
   toast.value = msg
@@ -35,6 +43,77 @@ async function loadStrategies() {
     console.error('loadStrategies failed:', e)
     strategies.value = []
   }
+  await loadDNA()
+}
+
+async function loadDNA() {
+  try {
+    dnaSummaries.value = await dnaApi.listAll()
+  } catch {
+    dnaSummaries.value = []
+  }
+}
+
+function getDna(strategyId: string) {
+  return dnaSummaries.value.find(d => d.strategy_id === strategyId)
+}
+
+async function previewDNA() {
+  if (!code.value || code.value.length < 50) {
+    previewData.value = null
+    return
+  }
+  previewLoading.value = true
+  previewError.value = ''
+  try {
+    previewData.value = await dnaApi.preview(strategyId.value || 'preview_' + Date.now(), code.value)
+  } catch (e: any) {
+    previewError.value = e.message
+    previewData.value = null
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function debouncedPreview() {
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(previewDNA, 3000)
+}
+
+function similarityWarning() {
+  if (!previewData.value || !dnaSummaries.value.length) return null
+  const previewGenes = new Set([
+    ...previewData.value.feature_genes,
+    ...previewData.value.signal_genes,
+  ])
+  if (!previewGenes.size) return null
+
+  let maxOverlap = 0
+  let mostSimilar = ''
+  for (const dna of dnaSummaries.value) {
+    if (dna.strategy_id === strategyId.value) continue
+    const existingGenes = new Set([
+      ...(dna.feature_genes || []),
+      ...(dna.signal_genes || []),
+    ])
+    const intersection = [...previewGenes].filter(g => existingGenes.has(g))
+    const union = new Set([...previewGenes, ...existingGenes])
+    const similarity = union.size ? intersection.length / union.size : 0
+    if (similarity > maxOverlap) {
+      maxOverlap = similarity
+      mostSimilar = dna.name || dna.strategy_id
+    }
+  }
+  if (maxOverlap > 0.5) {
+    return `与「${mostSimilar}」基因重叠度 ${(maxOverlap * 100).toFixed(0)}%，存在近亲繁殖风险`
+  }
+  return null
+}
+
+function healthColor(score: number) {
+  if (score >= 80) return '#16a34a'
+  if (score >= 60) return '#d97706'
+  return '#92400e'
 }
 
 function selectStrategy(s: Strategy) {
@@ -107,6 +186,12 @@ watch(isEditing, (val) => {
   showEditor.value = val
 })
 
+watch(code, () => {
+  if (isEditing.value) {
+    debouncedPreview()
+  }
+})
+
 onMounted(() => {
   loadStrategies()
 })
@@ -132,10 +217,27 @@ onBeforeUnmount(() => {
           :class="['list-item', { active: currentStrategy?.strategy_id === s.strategy_id }]"
           @click="selectStrategy(s)"
         >
+          <div class="list-health-dot">
+            <span
+              v-if="getDna(s.strategy_id)"
+              class="health-dot"
+              :style="{ background: healthColor(getDna(s.strategy_id)!.health_birth_score) }"
+              :title="`健康度: ${getDna(s.strategy_id)!.health_birth_score}`"
+            ></span>
+            <span v-else class="health-dot health-dot--empty"></span>
+          </div>
           <div class="list-content">
             <div class="list-title">{{ s.name }}</div>
             <div class="list-meta">{{ s.strategy_id }}</div>
           </div>
+          <RouterLink
+            v-if="s.strategy_id"
+            :to="`/dna-report/${s.strategy_id}`"
+            class="btn btn--ghost btn--sm list-action"
+            @click.stop
+          >
+            基因
+          </RouterLink>
           <button
             class="btn btn--ghost btn--sm list-action"
             @click.stop="deleteStrategy(s)"
@@ -193,6 +295,56 @@ onBeforeUnmount(() => {
             :tab-size="4"
           />
         </div>
+
+        <!-- Real-time DNA Preview (方案三) -->
+        <div class="preview-panel">
+          <div class="preview-header">
+            <span class="preview-title">基因实时预览</span>
+            <span v-if="previewLoading" class="preview-status">分析中...</span>
+            <span v-else-if="previewData" class="preview-status preview-status--ready">已就绪</span>
+          </div>
+          <div v-if="previewError" class="preview-error">{{ previewError }}</div>
+          <div v-else-if="previewData" class="preview-body">
+            <div class="preview-scores">
+              <div class="preview-score">
+                <div class="preview-score-value" :style="{ color: healthColor(previewData.health_birth_score) }">{{ previewData.health_birth_score }}</div>
+                <div class="preview-score-label">健康度</div>
+              </div>
+              <div class="preview-score">
+                <div class="preview-score-value">{{ (previewData.gene_diversity_score * 100).toFixed(0) }}%</div>
+                <div class="preview-score-label">多样性</div>
+              </div>
+              <div class="preview-score">
+                <div class="preview-score-value">{{ (previewData.metabolic_rate * 100).toFixed(0) }}%</div>
+                <div class="preview-score-label">代谢率</div>
+              </div>
+            </div>
+            <div v-if="similarityWarning()" class="preview-warning">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+              {{ similarityWarning() }}
+            </div>
+            <div class="preview-genes">
+              <div class="preview-gene-group">
+                <span class="preview-gene-label">特征</span>
+                <span v-for="g in previewData.feature_genes.slice(0, 6)" :key="g" class="preview-gene-tag">{{ g }}</span>
+                <span v-if="!previewData.feature_genes.length" class="preview-gene-empty">未检测到</span>
+              </div>
+              <div class="preview-gene-group">
+                <span class="preview-gene-label">信号</span>
+                <span v-for="g in previewData.signal_genes.slice(0, 6)" :key="g" class="preview-gene-tag preview-gene-tag--signal">{{ g }}</span>
+                <span v-if="!previewData.signal_genes.length" class="preview-gene-empty">未检测到</span>
+              </div>
+              <div class="preview-gene-group">
+                <span class="preview-gene-label">风控</span>
+                <span v-for="g in previewData.risk_genes.slice(0, 6)" :key="g" class="preview-gene-tag preview-gene-tag--risk">{{ g }}</span>
+                <span v-if="!previewData.risk_genes.length" class="preview-gene-empty">未检测到</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="preview-placeholder">输入代码 3 秒后将自动生成基因预览...</div>
+        </div>
+
+        <GenePanel v-if="currentStrategy?.strategy_id" :strategy-id="currentStrategy.strategy_id" />
       </template>
     </main>
 
@@ -381,5 +533,153 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   overflow: hidden;
+}
+
+.list-health-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding-right: var(--space-sm);
+}
+
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: block;
+}
+
+.health-dot--empty {
+  background: var(--border-subtle);
+}
+
+/* Real-time DNA Preview (方案三) */
+.preview-panel {
+  margin-top: var(--space-lg);
+  padding: var(--space-lg) var(--space-xl);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+}
+
+.preview-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.preview-status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.preview-status--ready {
+  color: var(--success);
+}
+
+.preview-error {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--error-subtle);
+  color: var(--error);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+}
+
+.preview-placeholder {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: var(--space-md) 0;
+}
+
+.preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.preview-scores {
+  display: flex;
+  gap: var(--space-xl);
+}
+
+.preview-score {
+  text-align: center;
+}
+
+.preview-score-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.preview-score-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.preview-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  color: #991b1b;
+  font-size: 0.8rem;
+}
+
+.preview-genes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.preview-gene-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.preview-gene-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  width: 36px;
+  flex-shrink: 0;
+}
+
+.preview-gene-tag {
+  padding: 2px 8px;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.preview-gene-tag--signal {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+}
+
+.preview-gene-tag--risk {
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+}
+
+.preview-gene-empty {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
 }
 </style>

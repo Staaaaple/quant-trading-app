@@ -14,6 +14,7 @@ class PaperTradingSession(Base):
     start_date = Column(String(10), nullable=True)
     end_date = Column(String(10), nullable=True)
     status = Column(String(16), default="idle")  # idle / running / paused / stopped / error
+    stop_reason = Column(String(64), nullable=True)  # death cause when stopped
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(
         DateTime,

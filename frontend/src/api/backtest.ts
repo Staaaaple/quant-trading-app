@@ -65,4 +65,9 @@ export const backtestApi = {
       body: JSON.stringify(payload),
     })
   },
+  remove(backtest_id: string): Promise<void> {
+    return request(`/backtests/${backtest_id}`, {
+      method: 'DELETE',
+    })
+  },
 }

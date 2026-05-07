@@ -12,6 +12,7 @@ class PaperTradingSessionBase(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     status: str = "idle"
+    stop_reason: str | None = None
     logs: str | None = None
 
     @field_validator("symbols", mode="before")
@@ -43,6 +44,7 @@ class PaperTradingSessionUpdate(BaseModel):
     status: str | None = None
     logs: str | None = None
     end_date: str | None = None
+    stop_reason: str | None = None
 
 
 class PaperSignalBase(BaseModel):

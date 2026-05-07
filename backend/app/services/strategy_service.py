@@ -27,16 +27,41 @@ def create_strategy(db: Session, obj_in: StrategyCreate):
     db.add(db_obj)
     db.commit()
     db.refresh(db_obj)
+    # Auto-trigger DNA sequencing after strategy creation
+    from app.services import dna_sequencer
+    dna_sequencer.sequence_strategy(db_obj.strategy_id, db_obj.code, db)
     return db_obj
 
-
 def update_strategy(db: Session, db_obj: Strategy, obj_in: StrategyUpdate):
+    from app.services import dna_sequencer
     update_data = obj_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_obj, field, value)
     db.add(db_obj)
     db.commit()
     db.refresh(db_obj)
+    # Re-sequence if code was updated
+    if "code" in update_data:
+        dna_sequencer.sequence_strategy(db_obj.strategy_id, db_obj.code, db)
+    return db_obj
+
+
+def update_strategy(db: Session, db_obj: Strategy, obj_in: StrategyUpdate):
+    from app.services import dna_sequencer, phylogeny_service
+    update_data = obj_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_obj, field, value)
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    # Re-sequence if code was updated
+    if "code" in update_data:
+        dna_sequencer.sequence_strategy(db_obj.strategy_id, db_obj.code, db)
+    # Recompute phylogeny
+    try:
+        phylogeny_service.compute_all_phylogeny(db)
+    except Exception:
+        pass
     return db_obj
 
 

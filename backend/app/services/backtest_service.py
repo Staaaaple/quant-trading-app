@@ -64,6 +64,11 @@ def update_backtest_record(db: Session, db_obj: BacktestResult, obj_in: Backtest
     return db_obj
 
 
+def delete_backtest(db: Session, db_obj: BacktestResult) -> None:
+    db.delete(db_obj)
+    db.commit()
+
+
 def _add_exchange_prefix(symbol: str) -> str:
     """为新浪财经接口补充 sh/sz 前缀."""
     if symbol.startswith(("sh", "sz")):
@@ -284,7 +289,51 @@ def _extract_metrics(result) -> dict[str, Any]:
             metrics[attr] = val
         except Exception:
             metrics[attr] = None
+
+    # trade_count 在 result.trade_metrics 中
+    try:
+        metrics["trade_count"] = int(result.trade_metrics.total_closed_trades)
+    except Exception:
+        metrics["trade_count"] = None
+
     return metrics
+
+
+BUY_HOLD_BENCHMARK_CODE = '''from akquant import Strategy
+
+class BuyHoldBenchmark(Strategy):
+    def __init__(self):
+        super().__init__()
+        self._bought = False
+
+    def on_bar(self, bar):
+        if not self._bought:
+            symbols = {symbols!r}
+            weight = 0.95 / len(symbols) if symbols else 0.95
+            for sym in symbols:
+                self.order_target_percent(sym, weight)
+            self._bought = True
+'''
+
+
+def _run_benchmark(data_input, symbols: list[str], initial_cash: float, start_date: str, end_date: str) -> dict[str, Any]:
+    """运行买入并持有基准回测."""
+    code = BUY_HOLD_BENCHMARK_CODE.format(symbols=symbols)
+    tmp_path = _write_strategy_to_temp_file(code)
+    try:
+        result = akquant.run_backtest(
+            data=data_input,
+            strategy_source=tmp_path,
+            symbols=symbols,
+            initial_cash=initial_cash,
+            start_time=start_date,
+            end_time=end_date,
+            show_progress=False,
+        )
+        return _extract_metrics(result)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 def _resolve_flow(
@@ -391,6 +440,17 @@ def run_backtest_for_strategy(
 
         metrics = _extract_metrics(result)
         db_backtest.metrics = metrics
+
+        # 运行买入并持有基准对照组
+        benchmark_metrics = _run_benchmark(
+            data_input=data_input,
+            symbols=symbols,
+            initial_cash=initial_cash,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        db_backtest.benchmark_metrics = benchmark_metrics
+
         db_backtest.status = "success"
         db_backtest.logs = json.dumps(
             {"engine_summary": str(result), "risk_config": risk_config},

@@ -101,6 +101,7 @@ def stop_session(
     *,
     db: Session = Depends(get_db),
     session_id: str,
+    obj_in: PaperTradingSessionUpdate | None = None,
 ):
     db_obj = paper_trading_service.get_session(db, session_id=session_id)
     if not db_obj:
@@ -114,6 +115,8 @@ def stop_session(
             detail=f"Paper trading session '{session_id}' is not running.",
         )
     update = PaperTradingSessionUpdate(status="stopped")
+    if obj_in and obj_in.stop_reason:
+        update.stop_reason = obj_in.stop_reason
     return paper_trading_service.update_session(db, db_obj, update)
 
 
