@@ -9,6 +9,7 @@ export interface PaperTradingSession {
   start_date: string | null
   end_date: string | null
   status: 'idle' | 'running' | 'paused' | 'stopped' | 'success' | 'error'
+  stop_reason: string | null
   logs: string | null
   created_at: string
   updated_at: string
@@ -63,9 +64,10 @@ export const paperTradingApi = {
       method: 'POST',
     })
   },
-  stop(session_id: string): Promise<PaperTradingSession> {
+  stop(session_id: string, stop_reason?: string): Promise<PaperTradingSession> {
     return request(`/paper-trading/sessions/${session_id}/stop`, {
       method: 'POST',
+      body: stop_reason ? JSON.stringify({ stop_reason }) : undefined,
     })
   },
 }

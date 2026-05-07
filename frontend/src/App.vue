@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { supportedLocales, type SupportedLocale } from './i18n'
 import { syncApi } from './api/sync'
+import { dnaApi } from './api/dna'
 
 const route = useRoute()
 const { locale, t } = useI18n()
@@ -19,6 +20,7 @@ function changeLanguage(lang: SupportedLocale) {
 }
 
 const pendingSummary = ref({ pending_count: 0, overdue_count: 0 })
+const ecoAlertCount = ref(0)
 
 async function loadPendingSummary() {
   try {
@@ -28,9 +30,20 @@ async function loadPendingSummary() {
   }
 }
 
+async function loadEcoAlert() {
+  try {
+    const eco = await dnaApi.getEcosystem()
+    ecoAlertCount.value = (eco.endangered_count || 0) + (eco.short_lifespan_strategies?.length || 0)
+  } catch {
+    // ignore
+  }
+}
+
 onMounted(() => {
   loadPendingSummary()
   setInterval(loadPendingSummary, 60000)
+  loadEcoAlert()
+  setInterval(loadEcoAlert, 300000)
 })
 </script>
 
@@ -48,6 +61,7 @@ onMounted(() => {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </span>
           <span>{{ t('nav.home') }}</span>
+          <span v-if="ecoAlertCount > 0" class="nav-badge nav-badge--eco" :title="`${ecoAlertCount} 个策略需要关注`">{{ ecoAlertCount }}</span>
         </RouterLink>
         <RouterLink to="/strategies" class="nav-item" exact-active-class="active">
           <span class="nav-icon">
@@ -199,6 +213,16 @@ onMounted(() => {
   font-weight: 600;
   border-radius: 9999px;
   padding: 0 6px;
+}
+
+.nav-badge--eco {
+  background: #b91c1c;
+  animation: eco-pulse 2s ease-in-out infinite;
+}
+
+@keyframes eco-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .lang-switcher {

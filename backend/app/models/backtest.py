@@ -14,6 +14,7 @@ class BacktestResult(Base):
     end_date = Column(String(16), nullable=True)
     initial_cash = Column(Float, default=100000.0)
     metrics = Column(JSON, nullable=True)  # 收益指标等
+    benchmark_metrics = Column(JSON, nullable=True)  # 对照组（买入并持有）收益指标
     logs = Column(Text, nullable=True)
     output_path = Column(String(256), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

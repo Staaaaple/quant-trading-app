@@ -19,6 +19,7 @@ class BacktestCreate(BacktestBase):
 class BacktestUpdate(BaseModel):
     status: str | None = None
     metrics: dict[str, Any] | None = None
+    benchmark_metrics: dict[str, Any] | None = None
     logs: str | None = None
     output_path: str | None = None
 
@@ -28,6 +29,7 @@ class BacktestRead(BacktestBase):
 
     id: int
     metrics: dict[str, Any] | None = None
+    benchmark_metrics: dict[str, Any] | None = None
     logs: str | None = None
     output_path: str | None = None
     created_at: datetime

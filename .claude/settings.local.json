@@ -22,7 +22,23 @@
       "Bash(curl -s -X POST 'http://localhost:8000/api/v1/strategy-flows' -H 'Content-Type: application/json' -d '{\"flow_id\":\"test_flow_001\",\"name\":\"测试策略流\",\"picker_strategy_id\":\"builtin_weekly_picker\",\"trade_strategy_id\":\"test_trade_001\"}')",
       "Bash(curl -s -X POST 'http://localhost:8000/api/v1/backtests' -H 'Content-Type: application/json' -d '{\"backtest_id\":\"test_bt_flow_001\",\"strategy_id\":\"test_flow_001\",\"start_date\":\"2024-01-01\",\"end_date\":\"2024-03-01\",\"initial_cash\":100000}')",
       "Bash(curl -s -X POST 'http://localhost:8000/api/v1/backtests/test_bt_flow_001/run' -H 'Content-Type: application/json' -d '{\"symbols\":[],\"start_date\":\"2024-01-01\",\"end_date\":\"2024-03-01\",\"initial_cash\":100000}')",
-      "Bash(curl -s 'http://localhost:8000/api/v1/stock-picker/weekly-summary')"
+      "Bash(curl -s 'http://localhost:8000/api/v1/stock-picker/weekly-summary')",
+      "Bash(xargs ls -la)",
+      "Bash(npx skills *)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:akquant.akfamily.xyz)",
+      "Bash(python -c \"import app.main; print\\('Backend imports OK'\\)\")",
+      "Bash(python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload)",
+      "Bash(curl -s http://127.0.0.1:8000/health)",
+      "Bash(curl -s http://127.0.0.1:8000/api/v1/dna/list)",
+      "Bash(python -m json.tool)",
+      "Bash(pkill -f uvicorn)",
+      "Bash(curl -s http://127.0.0.1:8000/api/v1/strategies/builtin_weekly_picker/dna)",
+      "Bash(sed -i 's/v-if=\"dna\\\\.feature_genes\\\\.length\"/class=\"gene-section\"/g' DNAReport.vue)",
+      "Bash(sed -i 's/v-if=\"dna\\\\.signal_genes\\\\.length\"/class=\"gene-section\"/g' DNAReport.vue)",
+      "Bash(sed -i 's/v-if=\"dna\\\\.risk_genes\\\\.length\"/class=\"gene-section\"/g' DNAReport.vue)",
+      "Bash(sed -i 's/v-if=\"dna\\\\.execution_genes\\\\.length\"/class=\"gene-section\"/g' DNAReport.vue)"
     ]
   }
 }

@@ -6,6 +6,7 @@ import { strategyApi, type Strategy } from '@/api/strategy'
 import { strategyFlowApi, type StrategyFlow } from '@/api/strategyFlow'
 import { syncApi, type DiffItem, type PaperSignal, type DailyReport } from '@/api/sync'
 import { accountSettingsApi, type AccountSettings } from '@/api/accountSettings'
+import { dnaApi, type StrategyDNASummary } from '@/api/dna'
 import LoadingOverlay from '@/components/LoadingOverlay.vue'
 
 const { t } = useI18n()
@@ -13,6 +14,7 @@ const { t } = useI18n()
 const sessions = ref<PaperTradingSession[]>([])
 const strategies = ref<Strategy[]>([])
 const flows = ref<StrategyFlow[]>([])
+const dnaSummaries = ref<StrategyDNASummary[]>([])
 const loading = ref(false)
 const toast = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -78,6 +80,18 @@ const batchForm = ref<{ signal_id: string; actual_price: number; actual_qty: num
 // CSV import
 const csvFileInput = ref<HTMLInputElement | null>(null)
 
+// Stop modal / graveyard (方案二)
+const showStopModal = ref(false)
+const stopSessionTarget = ref<PaperTradingSession | null>(null)
+const stopReason = ref('')
+const stopReasonOptions = [
+  { value: 'strategy_expired', label: '策略失效（达到寿命终点）' },
+  { value: 'target_reached', label: '达到目标收益' },
+  { value: 'stop_loss', label: '止损退出' },
+  { value: 'manual', label: '手动停止' },
+  { value: 'other', label: '其他原因' },
+]
+
 function showToast(msg: string) {
   toast.value = msg
   if (toastTimer) clearTimeout(toastTimer)
@@ -103,6 +117,46 @@ async function loadStrategies() {
     selectedStrategyId.value = allIds[0]!
     await loadDiff()
   }
+  await loadDNA()
+}
+
+async function loadDNA() {
+  try {
+    dnaSummaries.value = await dnaApi.listAll()
+  } catch {
+    dnaSummaries.value = []
+  }
+}
+
+const selectedDna = computed(() => {
+  return dnaSummaries.value.find(d => d.strategy_id === newSession.value.strategy_id)
+})
+
+function healthColor(score: number) {
+  if (score >= 80) return '#16a34a'
+  if (score >= 60) return '#d97706'
+  return '#92400e'
+}
+
+function getDnaForSession(strategyId: string) {
+  return dnaSummaries.value.find(d => d.strategy_id === strategyId)
+}
+
+function lifespanLabel(phase: string | undefined) {
+  const map: Record<string, string> = {
+    young: '年轻',
+    mature: '成熟',
+    aging: '衰老',
+    endangered: '濒危',
+  }
+  return map[phase || ''] || '-'
+}
+
+function lifespanClass(phase: string | undefined) {
+  if (phase === 'endangered') return 'lifespan-endangered'
+  if (phase === 'aging') return 'lifespan-aging'
+  if (phase === 'young') return 'lifespan-young'
+  return 'lifespan-mature'
 }
 
 function isFlow(id: string) {
@@ -160,17 +214,35 @@ async function runSession(s: PaperTradingSession) {
   }
 }
 
-async function stopSession(s: PaperTradingSession) {
+function openStopModal(s: PaperTradingSession) {
+  stopSessionTarget.value = s
+  stopReason.value = ''
+  showStopModal.value = true
+}
+
+function closeStopModal() {
+  showStopModal.value = false
+  stopSessionTarget.value = null
+  stopReason.value = ''
+}
+
+async function confirmStopSession() {
+  if (!stopSessionTarget.value) return
   loading.value = true
   try {
-    await paperTradingApi.stop(s.session_id)
+    await paperTradingApi.stop(stopSessionTarget.value.session_id, stopReason.value || undefined)
     showToast(t('paperTrading.stopSuccess'))
+    closeStopModal()
     await loadSessions()
   } catch (e: any) {
     showToast(t('paperTrading.stopError') + ': ' + e.message)
   } finally {
     loading.value = false
   }
+}
+
+async function stopSession(s: PaperTradingSession) {
+  openStopModal(s)
 }
 
 async function deleteSession(s: PaperTradingSession) {
@@ -538,6 +610,12 @@ onMounted(() => {
           <div v-if="isFlow(newSession.strategy_id)" class="flow-hint">
             {{ t('flow.runHint') }}
           </div>
+          <div v-if="selectedDna" class="eco-preview-mini">
+            <span class="eco-dot" :style="{ background: healthColor(selectedDna.health_birth_score) }"></span>
+            <span class="eco-health">{{ selectedDna.health_birth_score }}</span>
+            <span v-if="selectedDna.family_name" class="eco-family">{{ selectedDna.family_name }}</span>
+            <RouterLink :to="`/dna-report/${selectedDna.strategy_id}`" class="eco-link" @click.stop>基因报告</RouterLink>
+          </div>
         </div>
         <div class="form-group">
           <label>{{ t('common.symbols') }}</label>
@@ -573,6 +651,7 @@ onMounted(() => {
             <th>{{ t('common.strategy') }}</th>
             <th>{{ t('common.symbols') }}</th>
             <th>{{ t('backtest.dateRange') }}</th>
+            <th>寿命状态</th>
             <th>{{ t('common.status') }}</th>
             <th>{{ t('common.logs') }}</th>
             <th class="col-actions">{{ t('common.operations') }}</th>
@@ -584,6 +663,15 @@ onMounted(() => {
             <td class="mono">{{ s.strategy_id }}</td>
             <td>{{ Array.isArray(s.symbols) ? s.symbols.join(', ') : s.symbols }}</td>
             <td>{{ s.start_date || '-' }} ~ {{ s.end_date || '-' }}</td>
+            <td>
+              <template v-if="getDnaForSession(s.strategy_id)">
+                <span :class="['lifespan-badge', lifespanClass(getDnaForSession(s.strategy_id)!.lifespan_phase)]">
+                  {{ lifespanLabel(getDnaForSession(s.strategy_id)!.lifespan_phase) }}
+                  · {{ getDnaForSession(s.strategy_id)!.lifespan_months }}月
+                </span>
+              </template>
+              <span v-else class="lifespan-badge lifespan-unknown">未测序</span>
+            </td>
             <td>
               <span :class="['status-badge', statusClass(s.status)]">{{ t(`status.${s.status}`) }}</span>
             </td>
@@ -625,7 +713,7 @@ onMounted(() => {
             </td>
           </tr>
           <tr v-if="!sessions.length">
-            <td colspan="7" class="empty-cell">{{ t('common.empty') }}</td>
+            <td colspan="8" class="empty-cell">{{ t('common.empty') }}</td>
           </tr>
         </tbody>
       </table>
@@ -831,6 +919,51 @@ onMounted(() => {
         <div class="modal-footer">
           <button class="btn btn--secondary" @click="closeBatchModal">取消</button>
           <button class="btn btn--primary" :disabled="loading" @click="submitBatchSync">提交批量同步</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stop Session Modal (方案二) -->
+    <div v-if="showStopModal" class="modal-overlay" @click.self="closeStopModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 class="modal-title">停止模拟盘</h3>
+          <button class="modal-close" @click="closeStopModal">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="stop-hint">会话「{{ stopSessionTarget?.session_id }}」正在运行，请选择停止原因：</p>
+          <div class="stop-options">
+            <label v-for="opt in stopReasonOptions" :key="opt.value" class="stop-option">
+              <input v-model="stopReason" type="radio" :value="opt.value" />
+              <span>{{ opt.label }}</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn--secondary" @click="closeStopModal">取消</button>
+          <button class="btn btn--primary" :disabled="loading" @click="confirmStopSession">确认停止</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Graveyard (策略墓地) (方案二) -->
+    <div v-if="sessions.filter(s => s.status === 'stopped').length" class="card graveyard-card">
+      <div class="graveyard-header">
+        <h3 class="graveyard-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
+          策略墓地
+        </h3>
+        <span class="graveyard-count">已归档 {{ sessions.filter(s => s.status === 'stopped').length }} 个</span>
+      </div>
+      <div class="graveyard-list">
+        <div v-for="s in sessions.filter(s => s.status === 'stopped')" :key="s.session_id" class="graveyard-item">
+          <div class="graveyard-info">
+            <span class="graveyard-id">{{ s.session_id }}</span>
+            <span class="graveyard-strategy">{{ s.strategy_id }}</span>
+          </div>
+          <span v-if="s.stop_reason" class="graveyard-reason">{{ stopReasonOptions.find(o => o.value === s.stop_reason)?.label || s.stop_reason }}</span>
+          <span v-else class="graveyard-reason graveyard-reason--unknown">原因未记录</span>
+          <span class="graveyard-date">{{ s.updated_at ? s.updated_at.split('T')[0] : '' }}</span>
         </div>
       </div>
     </div>
@@ -1277,5 +1410,210 @@ onMounted(() => {
   margin-top: var(--space-sm);
   font-size: 0.8rem;
   color: var(--accent);
+}
+
+.eco-preview-mini {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-base);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
+
+.eco-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.eco-health {
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 32px;
+}
+
+.eco-family {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.eco-link {
+  margin-left: auto;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.75rem;
+}
+
+.eco-link:hover {
+  text-decoration: underline;
+}
+
+/* Lifespan badges */
+.lifespan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.lifespan-young {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.lifespan-mature {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+}
+
+.lifespan-aging {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.lifespan-endangered {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  animation: pulse-warning 2s ease-in-out infinite;
+}
+
+.lifespan-unknown {
+  background: var(--bg-surface-hover);
+  color: var(--text-muted);
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Stop modal */
+.stop-hint {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-lg);
+}
+
+.stop-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.stop-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.stop-option:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-focus);
+}
+
+.stop-option input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+/* Graveyard */
+.graveyard-card {
+  margin-top: var(--space-2xl);
+  padding: var(--space-xl);
+  background: #fafafa;
+  border: 1px solid var(--border-subtle);
+}
+
+.graveyard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-lg);
+}
+
+.graveyard-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.graveyard-title svg {
+  color: var(--text-muted);
+}
+
+.graveyard-count {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.graveyard-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.graveyard-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
+.graveyard-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.graveyard-id {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.graveyard-strategy {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.graveyard-reason {
+  padding: 2px 10px;
+  background: var(--bg-surface-hover);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.graveyard-reason--unknown {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.graveyard-date {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 </style>

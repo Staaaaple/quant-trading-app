@@ -48,6 +48,22 @@ def get_backtest(
     return db_obj
 
 
+@router.delete("/{backtest_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_backtest(
+    *,
+    db: Session = Depends(get_db),
+    backtest_id: str,
+):
+    db_obj = backtest_service.get_backtest(db, backtest_id=backtest_id)
+    if not db_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Backtest '{backtest_id}' not found.",
+        )
+    backtest_service.delete_backtest(db, db_obj)
+    return None
+
+
 @router.post("/{backtest_id}/run", response_model=BacktestRead)
 def run_backtest(
     *,

@@ -61,6 +61,18 @@ const router = createRouter({
       meta: { titleKey: 'manual.title' },
       component: () => import('../views/UserManual.vue'),
     },
+    {
+      path: '/strategy-map',
+      name: 'strategy-map',
+      meta: { titleKey: 'strategyMap.title' },
+      component: () => import('../views/StrategyMapView.vue'),
+    },
+    {
+      path: '/dna-report/:strategy_id',
+      name: 'dna-report',
+      meta: { titleKey: 'dna.reportTitle' },
+      component: () => import('../views/DNAReport.vue'),
+    },
   ],
 })
 

@@ -6,6 +6,7 @@ import { backtestApi, type Backtest } from '@/api/backtest'
 import { strategyApi, type Strategy } from '@/api/strategy'
 import { strategyFlowApi, type StrategyFlow } from '@/api/strategyFlow'
 import { stockPickerApi, type StockPool } from '@/api/stockPicker'
+import { dnaApi, type StrategyDNASummary } from '@/api/dna'
 import SparklineChart from '@/components/SparklineChart.vue'
 import LoadingOverlay from '@/components/LoadingOverlay.vue'
 
@@ -16,6 +17,7 @@ const backtests = ref<Backtest[]>([])
 const strategies = ref<Strategy[]>([])
 const flows = ref<StrategyFlow[]>([])
 const stockPools = ref<StockPool[]>([])
+const dnaSummaries = ref<StrategyDNASummary[]>([])
 const loading = ref(false)
 const toast = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -63,6 +65,36 @@ async function loadStrategies() {
   if (allIds.length && !newBacktest.value.strategy_id) {
     newBacktest.value.strategy_id = allIds[0]!
   }
+  await loadDNA()
+}
+
+async function loadDNA() {
+  try {
+    dnaSummaries.value = await dnaApi.listAll()
+  } catch {
+    dnaSummaries.value = []
+  }
+}
+
+const selectedDna = computed(() => {
+  return dnaSummaries.value.find(d => d.strategy_id === newBacktest.value.strategy_id)
+})
+
+const backtestRecommendation = computed(() => {
+  if (!selectedDna.value) return ''
+  const rate = selectedDna.value.metabolic_rate
+  if (rate > 0.3) {
+    return `高代谢策略（${(rate * 100).toFixed(0)}%），建议回测周期 1-3 个月，避免过拟合`
+  } else if (rate > 0.15) {
+    return `中等代谢策略（${(rate * 100).toFixed(0)}%），建议回测周期 3-6 个月`
+  }
+  return `低代谢策略（${(rate * 100).toFixed(0)}%），可回测 6-12 个月`
+})
+
+function healthColor(score: number) {
+  if (score >= 80) return '#16a34a'
+  if (score >= 60) return '#d97706'
+  return '#92400e'
 }
 
 function isFlow(id: string) {
@@ -88,6 +120,13 @@ async function createBacktest() {
   if (!newBacktest.value.backtest_id || !newBacktest.value.strategy_id) {
     showToast(t('backtest.fillRequired'))
     return
+  }
+  // Eco pre-check: warn on inbreeding
+  if (selectedDna.value?.inbreeding_warning) {
+    const confirmed = confirm(
+      `生态预审警告：策略「${newBacktest.value.strategy_id}」存在近亲繁殖风险（同质化率 ${(selectedDna.value.homogeneity_risk * 100).toFixed(0)}%）。继续创建回测可能得到虚高的差异化表现。是否继续？`
+    )
+    if (!confirmed) return
   }
   loading.value = true
   try {
@@ -127,6 +166,20 @@ async function runBacktest(bt: Backtest) {
   }
 }
 
+async function deleteBacktest(bt: Backtest) {
+  if (!confirm(t('common.confirmDelete'))) return
+  loading.value = true
+  try {
+    await backtestApi.remove(bt.backtest_id)
+    showToast(t('backtest.deleteSuccess'))
+    await loadBacktests()
+  } catch (e: any) {
+    showToast(t('backtest.deleteError') + ': ' + e.message)
+  } finally {
+    loading.value = false
+  }
+}
+
 function formatMetrics(metrics: Record<string, any> | null) {
   if (!metrics) return '-'
   const items = []
@@ -136,6 +189,8 @@ function formatMetrics(metrics: Record<string, any> | null) {
     items.push(`${t('backtest.sharpeRatio')}: ${metrics.sharpe_ratio.toFixed(2)}`)
   if (metrics.max_drawdown !== undefined)
     items.push(`${t('backtest.maxDrawdown')}: ${(metrics.max_drawdown * 100).toFixed(2)}%`)
+  if (metrics.trade_count !== undefined && metrics.trade_count !== null)
+    items.push(`交易次数: ${metrics.trade_count}`)
   return items.join(' | ') || JSON.stringify(metrics)
 }
 
@@ -216,6 +271,23 @@ onMounted(() => {
             <div v-if="isFlow(newBacktest.strategy_id)" class="flow-hint">
               {{ t('flow.runHint') }}
             </div>
+            <!-- Eco preview for selected strategy -->
+            <div v-if="selectedDna" class="eco-preview-mini">
+              <span class="eco-dot" :style="{ background: healthColor(selectedDna.health_birth_score) }"></span>
+              <span class="eco-health">{{ selectedDna.health_birth_score }}</span>
+              <span v-if="selectedDna.family_name" class="eco-family">{{ selectedDna.family_name }}</span>
+              <RouterLink :to="`/dna-report/${selectedDna.strategy_id}`" class="eco-link" @click.stop>基因报告</RouterLink>
+            </div>
+            <!-- Inbreeding warning -->
+            <div v-if="selectedDna?.inbreeding_warning" class="eco-warning">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+              <span>近亲繁殖警告：该策略与已有策略相似度过高（{{ (selectedDna.homogeneity_risk * 100).toFixed(0) }}%），回测结果可能无法反映真实差异化表现</span>
+            </div>
+            <!-- Backtest period recommendation -->
+            <div v-if="selectedDna" class="eco-recommendation">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>{{ backtestRecommendation }}</span>
+            </div>
           </div>
           <div class="form-group">
             <label>{{ t('common.symbols') }}</label>
@@ -261,6 +333,7 @@ onMounted(() => {
             <th class="col-numeric">{{ t('backtest.totalReturn') }}</th>
             <th class="col-numeric">{{ t('backtest.sharpeRatio') }}</th>
             <th class="col-numeric">{{ t('backtest.maxDrawdown') }}</th>
+            <th class="col-numeric">交易次数</th>
             <th class="col-numeric">{{ t('common.status') }}</th>
             <th class="col-chart">{{ t('common.metrics') }}</th>
             <th class="col-actions">{{ t('common.operations') }}</th>
@@ -281,6 +354,9 @@ onMounted(() => {
             <td class="col-numeric" :class="returnClass(bt.metrics?.max_drawdown)">
               {{ bt.metrics?.max_drawdown !== undefined ? (bt.metrics.max_drawdown * 100).toFixed(2) + '%' : '-' }}
             </td>
+            <td class="col-numeric">
+              {{ bt.metrics?.trade_count !== undefined && bt.metrics?.trade_count !== null ? bt.metrics.trade_count : '-' }}
+            </td>
             <td>
               <span :class="['status-badge', statusClass(bt.status)]">{{ t(`status.${bt.status}`) }}</span>
             </td>
@@ -288,18 +364,27 @@ onMounted(() => {
               <SparklineChart :total-return="bt.metrics?.total_return" />
             </td>
             <td class="col-actions">
-              <button
-                v-if="bt.status === 'pending' || bt.status === 'failed'"
-                class="btn btn--primary btn--sm"
-                :disabled="loading"
-                @click="runBacktest(bt)"
-              >
-                {{ t('common.run') }}
-              </button>
+              <div class="action-group">
+                <button
+                  v-if="bt.status === 'pending' || bt.status === 'failed'"
+                  class="btn btn--primary btn--sm"
+                  :disabled="loading"
+                  @click="runBacktest(bt)"
+                >
+                  {{ t('common.run') }}
+                </button>
+                <button
+                  class="btn btn--danger btn--sm"
+                  :disabled="loading"
+                  @click="deleteBacktest(bt)"
+                >
+                  {{ t('common.delete') }}
+                </button>
+              </div>
             </td>
           </tr>
           <tr v-if="!backtests.length">
-            <td colspan="10" class="empty-cell">{{ t('common.empty') }}</td>
+            <td colspan="11" class="empty-cell">{{ t('common.empty') }}</td>
           </tr>
         </tbody>
       </table>
@@ -436,6 +521,11 @@ onMounted(() => {
   text-align: right;
 }
 
+.action-group {
+  display: inline-flex;
+  gap: var(--space-sm);
+}
+
 .col-chart {
   width: 120px;
   min-width: 120px;
@@ -471,5 +561,83 @@ onMounted(() => {
   margin-top: var(--space-sm);
   font-size: 0.8rem;
   color: var(--accent);
+}
+
+.eco-preview-mini {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-base);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
+
+.eco-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.eco-health {
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 32px;
+}
+
+.eco-family {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.eco-link {
+  margin-left: auto;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.75rem;
+}
+
+.eco-link:hover {
+  text-decoration: underline;
+}
+
+.eco-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  color: #991b1b;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.eco-warning svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.eco-recommendation {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-sm);
+  color: #1e40af;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.eco-recommendation svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 </style>
