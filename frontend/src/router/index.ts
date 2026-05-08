@@ -50,6 +50,12 @@ const router = createRouter({
       component: () => import('../views/BacktestCenter.vue'),
     },
     {
+      path: '/backtests/:backtest_id',
+      name: 'backtest-detail',
+      meta: { titleKey: 'backtest.detailTitle' },
+      component: () => import('../views/BacktestDetail.vue'),
+    },
+    {
       path: '/paper-trading',
       name: 'paper-trading',
       meta: { titleKey: 'paperTrading.title' },

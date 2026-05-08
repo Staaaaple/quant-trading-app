@@ -340,7 +340,7 @@ onMounted(() => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="bt in backtests" :key="bt.backtest_id">
+          <tr v-for="bt in backtests" :key="bt.backtest_id" class="row-clickable" @click="$router.push(`/backtests/${bt.backtest_id}`)">
             <td class="mono">{{ bt.backtest_id }}</td>
             <td class="mono">{{ bt.strategy_id }}</td>
             <td>{{ bt.start_date }} ~ {{ bt.end_date }}</td>
@@ -369,14 +369,14 @@ onMounted(() => {
                   v-if="bt.status === 'pending' || bt.status === 'failed'"
                   class="btn btn--primary btn--sm"
                   :disabled="loading"
-                  @click="runBacktest(bt)"
+                  @click.stop="runBacktest(bt)"
                 >
                   {{ t('common.run') }}
                 </button>
                 <button
                   class="btn btn--danger btn--sm"
                   :disabled="loading"
-                  @click="deleteBacktest(bt)"
+                  @click.stop="deleteBacktest(bt)"
                 >
                   {{ t('common.delete') }}
                 </button>
@@ -639,5 +639,14 @@ onMounted(() => {
 .eco-recommendation svg {
   flex-shrink: 0;
   margin-top: 1px;
+}
+
+.row-clickable {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.row-clickable:hover {
+  background: var(--bg-surface-hover);
 }
 </style>

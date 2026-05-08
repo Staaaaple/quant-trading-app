@@ -53,7 +53,7 @@ def main():
     # 等待后端启动
     time.sleep(2)
 
-    print("[start] 启动前端服务...")
+    print("[start] 启动前端服务: http://127.0.0.1:3000")
     frontend_proc = subprocess.Popen(
         frontend_cmd,
         cwd=FRONTEND_DIR,

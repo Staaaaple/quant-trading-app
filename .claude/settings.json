@@ -29,7 +29,15 @@
       "Bash(curl -s -X POST http://127.0.0.1:8000/api/v1/backtests -H \"Content-Type: application/json\" -d '{\"backtest_id\":\"06\",\"strategy_id\":\"preset_dual_ma\",\"start_date\":\"2024-01-01\",\"end_date\":\"2024-12-01\",\"initial_cash\":100000}')",
       "Bash(curl -s -X POST http://127.0.0.1:8000/api/v1/backtests/06/run -H \"Content-Type: application/json\" -d '{\"symbols\":[\"000001\"],\"start_date\":\"2024-01-01\",\"end_date\":\"2024-12-01\",\"initial_cash\":100000}')",
       "Bash(curl -s -X DELETE http://127.0.0.1:8000/api/v1/backtests/06 -w \"\\\\nHTTP %{http_code}\\\\n\")",
-      "Bash(sqlite3 quant_trading.db \"ALTER TABLE backtest_results ADD COLUMN benchmark_metrics TEXT;\")"
+      "Bash(sqlite3 quant_trading.db \"ALTER TABLE backtest_results ADD COLUMN benchmark_metrics TEXT;\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5173/)",
+      "Bash(lsof -PiTCP -sTCP:LISTEN)",
+      "Bash(ps -o pid,command -p 21346 23128)",
+      "Bash(curl -s -D - http://127.0.0.1:5174/)",
+      "Bash(curl -s -D - http://[::1]:5174/)",
+      "Bash(curl -v http://localhost:5174/)",
+      "Bash(git reset *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

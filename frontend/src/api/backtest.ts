@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
+import { request } from './client'
 
 export interface Backtest {
   id: number
@@ -9,6 +9,7 @@ export interface Backtest {
   end_date: string
   initial_cash: number
   metrics: Record<string, any> | null
+  benchmark_metrics: Record<string, any> | null
   logs: string | null
   created_at: string
   updated_at: string
@@ -27,23 +28,6 @@ export interface BacktestRunPayload {
   start_date: string
   end_date: string
   initial_cash: number
-}
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    ...options,
-  })
-  if (!resp.ok) {
-    const text = await resp.text()
-    throw new Error(`HTTP ${resp.status}: ${text}`)
-  }
-  if (resp.status === 204) {
-    return undefined as unknown as T
-  }
-  return resp.json() as Promise<T>
 }
 
 export const backtestApi = {
