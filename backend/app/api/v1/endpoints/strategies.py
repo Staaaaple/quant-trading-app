@@ -2,8 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.strategy import StrategyCreate, StrategyRead, StrategyUpdate
-from app.services import strategy_service
+from app.schemas.strategy import (
+    StrategyCreate,
+    StrategyRead,
+    StrategyUpdate,
+    CodePreviewPayload,
+    CodePreviewResponse,
+)
+from app.services import strategy_service, pipeline_generator
 
 router = APIRouter()
 
@@ -79,3 +85,22 @@ def delete_strategy(
         )
     strategy_service.delete_strategy(db, db_obj)
     return None
+
+
+@router.post("/preview-code", response_model=CodePreviewResponse)
+def preview_code(
+    *,
+    payload: CodePreviewPayload,
+):
+    """预览流水线配置生成的代码（不保存到数据库）."""
+    try:
+        config = payload.pipeline_config
+        if hasattr(config, "model_dump"):
+            config = config.model_dump()
+        code = pipeline_generator.generate_code(config)
+        return CodePreviewResponse(code=code)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Code generation failed: {e}",
+        )

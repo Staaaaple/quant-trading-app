@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
 from app.db.base import Base
 
 
@@ -12,6 +12,7 @@ class Strategy(Base):
     type = Column(String(16), default="trade", nullable=False)  # trade | picker | risk | flow
     description = Column(Text, nullable=True)
     code = Column(Text, nullable=False)
+    pipeline_config = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(
         DateTime,

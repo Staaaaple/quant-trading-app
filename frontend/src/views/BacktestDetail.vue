@@ -9,6 +9,7 @@ import VChart from 'vue-echarts'
 import { backtestApi, type Backtest } from '@/api/backtest'
 import { dnaApi, type StrategyDNA, type StrategyPhylogeny } from '@/api/dna'
 import LoadingOverlay from '@/components/LoadingOverlay.vue'
+import BacktestLogTranslator from '@/components/BacktestLogTranslator.vue'
 
 use([CanvasRenderer, CandlestickChart, LineChart, ScatterChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, TitleComponent, MarkPointComponent])
 
@@ -83,6 +84,12 @@ const parsedLogs = computed(() => {
   } catch {
     return null
   }
+})
+
+const riskBlocks = computed(() => {
+  const logs = parsedLogs.value
+  if (!logs?.risk_blocks || !Array.isArray(logs.risk_blocks)) return []
+  return logs.risk_blocks
 })
 
 const candleData = computed(() => {
@@ -515,7 +522,18 @@ const phaseMap: Record<string, string> = { young: '年轻', mature: '成熟', ag
         <p class="empty-state">暂无K线数据（该回测可能没有可视化数据）</p>
       </div>
 
-      <!-- Logs -->
+      <!-- Risk Blocks -->
+      <div v-if="backtest" class="section">
+        <h2 class="section-title">
+          <span class="section-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </span>
+          风控日志
+        </h2>
+        <BacktestLogTranslator :risk-blocks="riskBlocks" />
+      </div>
+
+      <!-- Raw Logs -->
       <div class="section">
         <h2 class="section-title">
           <span class="section-icon">

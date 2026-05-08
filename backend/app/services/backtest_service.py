@@ -534,11 +534,30 @@ def run_backtest_for_strategy(
         db_backtest.benchmark_metrics = benchmark_metrics
 
         db_backtest.status = "success"
+
+        # Extract risk blocks from pipeline-generated strategies
+        risk_blocks = []
+        try:
+            strategy_instance = getattr(result, "strategy", None)
+            if strategy_instance and hasattr(strategy_instance, "_risk_blocks"):
+                raw_blocks = strategy_instance._risk_blocks
+                if raw_blocks:
+                    # Deduplicate by (type, date) keeping the first occurrence
+                    seen = set()
+                    for block in raw_blocks:
+                        key = (block.get("type"), block.get("date"), block.get("symbol"))
+                        if key not in seen:
+                            seen.add(key)
+                            risk_blocks.append(block)
+        except Exception:
+            pass
+
         logs_data = {
             "engine_summary": str(result),
             "risk_config": risk_config,
             "trades": _extract_trades(result),
             "candles": _extract_candles(data_input, symbols),
+            "risk_blocks": risk_blocks,
         }
         db_backtest.logs = json.dumps(
             logs_data,

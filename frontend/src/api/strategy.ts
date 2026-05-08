@@ -6,6 +6,7 @@ export interface Strategy {
   name: string
   type: string
   code: string
+  pipeline_config: Record<string, any> | null
   created_at: string
   updated_at: string
 }
@@ -13,8 +14,13 @@ export interface Strategy {
 export interface StrategyCreatePayload {
   strategy_id: string
   name: string
-  code: string
+  code?: string
   type?: string
+  pipeline_config?: Record<string, any>
+}
+
+export interface CodePreviewResponse {
+  code: string
 }
 
 export const strategyApi = {
@@ -39,6 +45,12 @@ export const strategyApi = {
   remove(strategy_id: string): Promise<void> {
     return request(`/strategies/${strategy_id}`, {
       method: 'DELETE',
+    })
+  },
+  previewCode(pipelineConfig: Record<string, any>): Promise<CodePreviewResponse> {
+    return request('/strategies/preview-code', {
+      method: 'POST',
+      body: JSON.stringify({ pipeline_config: pipelineConfig }),
     })
   },
 }

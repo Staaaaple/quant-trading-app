@@ -6,6 +6,7 @@ import { python } from '@codemirror/lang-python'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { strategyApi, type Strategy } from '@/api/strategy'
 import LoadingOverlay from '@/components/LoadingOverlay.vue'
+import PipelineEditor from '@/components/pipeline/PipelineEditor.vue'
 
 const { t } = useI18n()
 const extensions = [python(), oneDark]
@@ -20,6 +21,72 @@ const showEditor = ref(false)
 const loading = ref(false)
 const toast = ref('')
 const showApiDoc = ref(false)
+
+// Mode switch: 'visual' (pipeline) | 'code' (developer)
+const editMode = ref<'visual' | 'code'>('visual')
+
+// Pipeline config
+const defaultPipelineConfig = () => ({
+  version: '1.0',
+  stages: [
+    {
+      id: 'init-1',
+      type: 'init',
+      config: { history_depth: 30, max_position_pct: 0.95 },
+    },
+    {
+      id: 'indicator-1',
+      type: 'indicator',
+      config: {
+        indicators: [
+          { name: 'ma5', type: 'MA', period: 5, field: 'close' },
+          { name: 'ma20', type: 'MA', period: 20, field: 'close' },
+        ],
+      },
+    },
+    {
+      id: 'risk-1',
+      type: 'risk',
+      config: { checks: [] },
+    },
+    {
+      id: 'signal-1',
+      type: 'signal',
+      config: {
+        groups: [
+          {
+            id: 'buy-signal',
+            direction: 'buy',
+            logic: 'AND',
+            conditions: [
+              { left: { indicator: 'ma5' }, op: 'cross_up', right: { indicator: 'ma20' } },
+            ],
+          },
+          {
+            id: 'sell-signal',
+            direction: 'sell',
+            logic: 'AND',
+            conditions: [
+              { left: { indicator: 'ma5' }, op: 'cross_down', right: { indicator: 'ma20' } },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      id: 'action-1',
+      type: 'action',
+      config: {
+        rules: [
+          { signal_group: 'buy-signal', action: 'order_target_percent', weight: 0.5 },
+          { signal_group: 'sell-signal', action: 'order_target_percent', weight: 0.0 },
+        ],
+      },
+    },
+  ],
+})
+
+const pipelineConfig = ref<Record<string, any>>(defaultPipelineConfig())
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -40,22 +107,25 @@ async function loadStrategies() {
 
 function selectStrategy(s: Strategy) {
   currentStrategy.value = s
-  code.value = s.code
   name.value = s.name
   strategyId.value = s.strategy_id
+  code.value = s.code
+  if (s.pipeline_config) {
+    pipelineConfig.value = JSON.parse(JSON.stringify(s.pipeline_config))
+    editMode.value = 'visual'
+  } else {
+    editMode.value = 'code'
+  }
   isEditing.value = true
 }
 
 function createNew() {
   currentStrategy.value = null
-  code.value = `from akquant import Strategy
-
-class MyStrategy(Strategy):
-    def on_bar(self, bar):
-        pass
-`
+  pipelineConfig.value = defaultPipelineConfig()
+  code.value = ''
   name.value = ''
   strategyId.value = 'trade_' + Date.now()
+  editMode.value = 'visual'
   isEditing.value = true
 }
 
@@ -66,18 +136,24 @@ async function saveStrategy() {
   }
   loading.value = true
   try {
+    const payload: any = {
+      name: name.value,
+    }
+    if (editMode.value === 'visual') {
+      payload.pipeline_config = pipelineConfig.value
+    } else {
+      payload.code = code.value
+    }
+
     if (currentStrategy.value) {
-      await strategyApi.update(currentStrategy.value.strategy_id, {
-        name: name.value,
-        code: code.value,
-      })
+      await strategyApi.update(currentStrategy.value.strategy_id, payload)
       showToast(t('strategy.saveSuccess'))
     } else {
       await strategyApi.create({
         strategy_id: strategyId.value,
         name: name.value,
-        code: code.value,
         type: 'trade',
+        ...payload,
       })
       showToast(t('strategy.createSuccess'))
       currentStrategy.value = await strategyApi.get(strategyId.value)
@@ -179,6 +255,25 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="toolbar-actions">
+            <!-- Mode Switch -->
+            <div class="mode-switch">
+              <button
+                class="mode-btn"
+                :class="{ 'mode-btn--active': editMode === 'visual' }"
+                @click="editMode = 'visual'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                可视化模式
+              </button>
+              <button
+                class="mode-btn"
+                :class="{ 'mode-btn--active': editMode === 'code' }"
+                @click="editMode = 'code'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                开发者模式
+              </button>
+            </div>
             <button
               class="btn btn--secondary"
               :class="{ 'btn--active': showApiDoc }"
@@ -196,9 +291,15 @@ onBeforeUnmount(() => {
         <div v-if="toast" class="toast">{{ toast }}</div>
 
         <div class="editor-body">
-          <div class="editor-main">
+          <div class="editor-main" :class="{ 'editor-main--with-doc': showApiDoc }">
+            <!-- Visual Mode -->
+            <PipelineEditor
+              v-if="editMode === 'visual'"
+              v-model="pipelineConfig"
+            />
+            <!-- Code Mode -->
             <Codemirror
-              v-if="showEditor"
+              v-else-if="showEditor"
               v-model="code"
               :extensions="extensions"
               :style="{ height: '100%' }"
@@ -209,6 +310,7 @@ onBeforeUnmount(() => {
 
           <!-- API Reference Panel -->
           <div v-if="showApiDoc" class="api-doc-panel">
+            <!-- ... existing API doc content ... -->
             <div class="api-doc-header">
               <h3 class="api-doc-title">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>
@@ -230,87 +332,30 @@ class MyStrategy(Strategy):
     def on_bar(self, bar):
         symbol = bar.symbol
         closes = self.get_history(21, symbol, field="close")
-        if len(closes) &lt; 20:
+        if len(closes) < 20:
             return
         ma = closes[-20:].mean()
         pos = self.get_position(symbol)
-        if bar.close &gt; ma and pos == 0:
+        if bar.close > ma and pos == 0:
             self.order_target_percent(0.95, symbol)
-        elif bar.close &lt; ma and pos &gt; 0:
+        elif bar.close < ma and pos > 0:
             self.order_target_percent(0.0, symbol)</pre>
               </div>
-
               <div class="api-doc-section">
                 <h4 class="api-doc-section-title">核心方法</h4>
                 <div class="api-doc-table">
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">on_bar(bar)</code>
-                    <span class="api-doc-desc">每个 K 线到达时触发，策略逻辑入口</span>
-                  </div>
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">get_history(count, symbol, field='close')</code>
-                    <span class="api-doc-desc">获取历史数据。field 可选 close/open/high/low/volume，省略返回完整 DataFrame</span>
-                  </div>
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">set_history_depth(n)</code>
-                    <span class="api-doc-desc">设置历史数据缓存深度，必须在 get_history 前调用</span>
-                  </div>
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">order_target_percent(weight, symbol)</code>
-                    <span class="api-doc-desc">目标仓位下单，weight 为 0.0~1.0 的百分比</span>
-                  </div>
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">get_position(symbol)</code>
-                    <span class="api-doc-desc">获取当前持仓数量</span>
-                  </div>
+                  <div class="api-doc-row"><code class="api-doc-name">on_bar(bar)</code><span class="api-doc-desc">每个 K 线到达时触发</span></div>
+                  <div class="api-doc-row"><code class="api-doc-name">get_history(count, symbol, field='close')</code><span class="api-doc-desc">获取历史数据</span></div>
+                  <div class="api-doc-row"><code class="api-doc-name">set_history_depth(n)</code><span class="api-doc-desc">设置历史数据缓存深度</span></div>
+                  <div class="api-doc-row"><code class="api-doc-name">order_target_percent(weight, symbol)</code><span class="api-doc-desc">目标仓位下单</span></div>
+                  <div class="api-doc-row"><code class="api-doc-name">get_position(symbol)</code><span class="api-doc-desc">获取当前持仓数量</span></div>
                 </div>
               </div>
-
-              <div class="api-doc-section">
-                <h4 class="api-doc-section-title">Bar 对象属性</h4>
-                <div class="api-doc-table">
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">bar.symbol</code>
-                    <span class="api-doc-desc">股票代码</span>
-                  </div>
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">bar.close</code>
-                    <span class="api-doc-desc">收盘价</span>
-                  </div>
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">bar.open / bar.high / bar.low</code>
-                    <span class="api-doc-desc">开盘 / 最高 / 最低价</span>
-                  </div>
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">bar.volume</code>
-                    <span class="api-doc-desc">成交量</span>
-                  </div>
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">bar.extra['amount']</code>
-                    <span class="api-doc-desc">成交额（扩展字段）</span>
-                  </div>
-                  <div class="api-doc-row">
-                    <code class="api-doc-name">bar.extra['turnover']</code>
-                    <span class="api-doc-desc">换手率（扩展字段）</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="api-doc-section">
-                <h4 class="api-doc-section-title">风控扩展</h4>
-                <pre class="api-doc-code">def risk_check(self, context):
-    """返回 True 允许交易，False 阻止"""
-    if context['drawdown'] &gt; 0.05:
-        return False
-    return True</pre>
-              </div>
-
               <div class="api-doc-section">
                 <h4 class="api-doc-section-title">注意事项</h4>
                 <ul class="api-doc-list">
                   <li>策略必须继承 <code>from akquant import Strategy</code></li>
-                  <li>get_history 前需调用 set_history_depth(n) 预分配缓存</li>
-                  <li>field='close' 返回 numpy.ndarray，省略 field 返回 DataFrame</li>
+                  <li>get_history 前需调用 set_history_depth(n)</li>
                   <li>order_target_percent(0.0, symbol) 表示清仓</li>
                 </ul>
               </div>
@@ -515,10 +560,48 @@ class MyStrategy(Strategy):
   overflow: hidden;
 }
 
+.editor-main--with-doc {
+  flex: 1;
+}
+
 .editor-body :deep(.cm-editor) {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   overflow: hidden;
+}
+
+/* Mode Switch */
+.mode-switch {
+  display: flex;
+  align-items: center;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+
+.mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-btn:hover {
+  color: var(--text-primary);
+}
+
+.mode-btn--active {
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
 
 /* API Doc Panel */

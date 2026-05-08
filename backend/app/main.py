@@ -23,10 +23,24 @@ def _run_builtin_weekly_job():
         db.close()
 
 
+def _ensure_db_columns():
+    """确保数据库表包含所有必需的列（兼容已有数据库）."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    columns = [c["name"] for c in inspector.get_columns("strategies")]
+    if "pipeline_config" not in columns:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE strategies ADD COLUMN pipeline_config JSON"))
+            conn.commit()
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: create all database tables if they don't exist
     Base.metadata.create_all(bind=engine)
+
+    # Ensure new columns exist for existing databases
+    _ensure_db_columns()
 
     # Ensure builtin picker exists
     db = SessionLocal()
