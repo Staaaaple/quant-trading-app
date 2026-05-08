@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { CandlestickChart, LineChart, ScatterChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, TitleComponent, MarkPointComponent } from 'echarts/components'
+import VChart from 'vue-echarts'
 import { backtestApi, type Backtest } from '@/api/backtest'
 import { dnaApi, type StrategyDNA, type StrategyPhylogeny } from '@/api/dna'
 import LoadingOverlay from '@/components/LoadingOverlay.vue'
+
+use([CanvasRenderer, CandlestickChart, LineChart, ScatterChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, TitleComponent, MarkPointComponent])
 
 const route = useRoute()
 const router = useRouter()
@@ -64,6 +71,151 @@ function fmtInt(val: number | undefined | null): string {
   if (isNaN(n)) return '-'
   return String(n)
 }
+
+// ── Logs parsing ──
+const parsedLogs = computed(() => {
+  if (!backtest.value?.logs) return null
+  try {
+    const raw = typeof backtest.value.logs === 'string'
+      ? JSON.parse(backtest.value.logs)
+      : backtest.value.logs
+    return raw
+  } catch {
+    return null
+  }
+})
+
+const candleData = computed(() => {
+  const logs = parsedLogs.value
+  if (!logs?.candles) return []
+  const firstSym = Object.keys(logs.candles)[0]
+  if (!firstSym) return []
+  return logs.candles[firstSym] || []
+})
+
+const tradeMarkers = computed(() => {
+  const logs = parsedLogs.value
+  if (!logs?.trades) return { buy: [] as any[], sell: [] as any[] }
+  const buys: any[] = []
+  const sells: any[] = []
+  for (const t of logs.trades) {
+    if (t.entry_time) {
+      buys.push({
+        date: t.entry_time.slice(0, 10),
+        price: t.entry_price,
+        symbol: t.symbol,
+        quantity: t.quantity,
+      })
+    }
+    if (t.exit_time) {
+      sells.push({
+        date: t.exit_time.slice(0, 10),
+        price: t.exit_price,
+        symbol: t.symbol,
+        pnl: t.pnl,
+      })
+    }
+  }
+  return { buy: buys, sell: sells }
+})
+
+const candleChartOption = computed(() => {
+  const candles = candleData.value
+  if (!candles.length) return {}
+
+  const dates = candles.map((c: any) => c.date)
+  const klineData = candles.map((c: any) => [c.open, c.close, c.low, c.high])
+
+  // Build date -> index map for reliable markPoint positioning
+  const dateIndexMap = new Map<string, number>()
+  dates.forEach((d: string, i: number) => dateIndexMap.set(d, i))
+
+  const { buy, sell } = tradeMarkers.value
+
+  const buyPoints = buy
+    .map((b: any) => {
+      const idx = dateIndexMap.get(b.date)
+      if (idx === undefined) return null
+      return {
+        name: '买入',
+        coord: [idx, b.price],
+        value: `买入 ${b.price.toFixed(2)}`,
+        itemStyle: { color: '#16a34a' },
+        symbolRotate: 180,
+      }
+    })
+    .filter(Boolean)
+
+  const sellPoints = sell
+    .map((s: any) => {
+      const idx = dateIndexMap.get(s.date)
+      if (idx === undefined) return null
+      return {
+        name: '卖出',
+        coord: [idx, s.price],
+        value: `卖出 ${s.price.toFixed(2)}`,
+        itemStyle: { color: '#b91c1c' },
+      }
+    })
+    .filter(Boolean)
+
+  return {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      formatter: (params: any[]) => {
+        const k = params.find((p: any) => p.seriesName === 'K线')
+        if (!k) return ''
+        const [o, c, l, h] = k.data
+        return `${k.name}<br/>开: ${o.toFixed(2)} 收: ${c.toFixed(2)}<br/>高: ${h.toFixed(2)} 低: ${l.toFixed(2)}`
+      },
+    },
+    legend: { data: ['K线'], top: 8, textStyle: { fontSize: 11, color: '#6b7280' } },
+    grid: { left: 56, right: 16, top: 40, bottom: 64 },
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', start: 0, end: 100, bottom: 8, height: 20 },
+    ],
+    xAxis: {
+      type: 'category',
+      data: dates,
+      axisLine: { lineStyle: { color: '#e2e8f0' } },
+      axisLabel: { color: '#6b7280', fontSize: 10 },
+    },
+    yAxis: {
+      type: 'value',
+      scale: true,
+      axisLine: { lineStyle: { color: '#e2e8f0' } },
+      axisLabel: { color: '#6b7280', fontSize: 10 },
+      splitLine: { lineStyle: { color: '#f1f5f9' } },
+    },
+    series: [
+      {
+        name: 'K线',
+        type: 'candlestick',
+        data: klineData,
+        itemStyle: {
+          color: '#ef4444',
+          color0: '#22c55e',
+          borderColor: '#ef4444',
+          borderColor0: '#22c55e',
+        },
+        markPoint: {
+          symbol: 'pin',
+          symbolSize: 48,
+          label: {
+            show: true,
+            fontSize: 9,
+            fontWeight: 700,
+            color: '#fff',
+            formatter: (p: any) => p.value,
+          },
+          data: [...buyPoints, ...sellPoints] as any[],
+        },
+      },
+    ],
+  }
+})
 
 // ── Metrics comparison ──
 const metricsRows = computed(() => {
@@ -336,6 +488,31 @@ const phaseMap: Record<string, string> = { young: '年轻', mature: '成熟', ag
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Candlestick Chart -->
+      <div v-if="candleData.length" class="section">
+        <h2 class="section-title">
+          <span class="section-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          </span>
+          交易走势
+          <span class="section-sub">
+            {{ candleData.length }} 根K线 · {{ tradeMarkers.buy.length }} 笔买入 · {{ tradeMarkers.sell.length }} 笔卖出
+          </span>
+        </h2>
+        <div class="chart-card">
+          <VChart
+            :option="candleChartOption"
+            :key="backtestId + candleData.length"
+            autoresize
+            style="width: 100%; height: 420px;"
+          />
+        </div>
+      </div>
+      <div v-else-if="backtest" class="section">
+        <h2 class="section-title">交易走势</h2>
+        <p class="empty-state">暂无K线数据（该回测可能没有可视化数据）</p>
       </div>
 
       <!-- Logs -->
@@ -774,6 +951,20 @@ const phaseMap: Record<string, string> = { young: '年轻', mature: '成熟', ag
 
 .error-card p {
   margin-bottom: var(--space-lg);
+}
+
+.chart-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+}
+
+.section-sub {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .text-profit {

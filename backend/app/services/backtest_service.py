@@ -299,6 +299,88 @@ def _extract_metrics(result) -> dict[str, Any]:
     return metrics
 
 
+def _extract_trades(result) -> list[dict]:
+    """从 akquant BacktestResult 中提取交易记录."""
+    try:
+        df = result.trades_df
+        if df.empty:
+            return []
+        records = []
+        for _, row in df.iterrows():
+            records.append({
+                "symbol": row.get("symbol"),
+                "entry_time": row.get("entry_time").isoformat() if pd.notna(row.get("entry_time")) else None,
+                "exit_time": row.get("exit_time").isoformat() if pd.notna(row.get("exit_time")) else None,
+                "entry_price": float(row.get("entry_price")) if pd.notna(row.get("entry_price")) else None,
+                "exit_price": float(row.get("exit_price")) if pd.notna(row.get("exit_price")) else None,
+                "quantity": float(row.get("quantity")) if pd.notna(row.get("quantity")) else None,
+                "side": row.get("side"),
+                "pnl": float(row.get("pnl")) if pd.notna(row.get("pnl")) else None,
+                "return_pct": float(row.get("return_pct")) if pd.notna(row.get("return_pct")) else None,
+                "entry_tag": row.get("entry_tag"),
+                "exit_tag": row.get("exit_tag"),
+            })
+        return records
+    except Exception:
+        return []
+
+
+def _extract_candles(data_input, symbols: list[str]) -> dict[str, list[dict]]:
+    """从原始数据中提取 K 线数据."""
+    candles: dict[str, list[dict]] = {}
+    try:
+        if isinstance(data_input, dict):
+            for sym, df in data_input.items():
+                candles[sym] = _df_to_candles(df)
+        elif hasattr(data_input, "iterrows"):
+            # 单一 DataFrame，使用第一个 symbol
+            sym = symbols[0] if symbols else "unknown"
+            candles[sym] = _df_to_candles(data_input)
+    except Exception:
+        pass
+    return candles
+
+
+def _df_to_candles(df) -> list[dict]:
+    """将 DataFrame 转换为前端可用的 K 线列表."""
+    records = []
+    df = df.copy().reset_index()
+    # 标准化列名
+    col_map = {}
+    for c in df.columns:
+        lc = str(c).lower()
+        if lc in ("date", "datetime", "timestamp", "time"):
+            col_map["date"] = c
+        elif lc == "open":
+            col_map["open"] = c
+        elif lc == "high":
+            col_map["high"] = c
+        elif lc == "low":
+            col_map["low"] = c
+        elif lc == "close":
+            col_map["close"] = c
+        elif lc in ("volume", "vol"):
+            col_map["volume"] = c
+
+    for _, row in df.iterrows():
+        dt = row.get(col_map.get("date", "date"))
+        if dt is None or pd.isna(dt):
+            continue
+        if hasattr(dt, "strftime"):
+            dt_str = dt.strftime("%Y-%m-%d")
+        else:
+            dt_str = str(dt)[:10]
+        records.append({
+            "date": dt_str,
+            "open": float(row.get(col_map.get("open", "open"), 0)) if pd.notna(row.get(col_map.get("open", "open"))) else 0,
+            "high": float(row.get(col_map.get("high", "high"), 0)) if pd.notna(row.get(col_map.get("high", "high"))) else 0,
+            "low": float(row.get(col_map.get("low", "low"), 0)) if pd.notna(row.get(col_map.get("low", "low"))) else 0,
+            "close": float(row.get(col_map.get("close", "close"), 0)) if pd.notna(row.get(col_map.get("close", "close"))) else 0,
+            "volume": float(row.get(col_map.get("volume", "volume"), 0)) if pd.notna(row.get(col_map.get("volume", "volume"))) else 0,
+        })
+    return records
+
+
 BUY_HOLD_BENCHMARK_CODE = '''from akquant import Strategy
 
 class BuyHoldBenchmark(Strategy):
@@ -311,7 +393,7 @@ class BuyHoldBenchmark(Strategy):
             symbols = {symbols!r}
             weight = 0.95 / len(symbols) if symbols else 0.95
             for sym in symbols:
-                self.order_target_percent(sym, weight)
+                self.order_target_percent(weight, sym)
             self._bought = True
 '''
 
@@ -452,8 +534,14 @@ def run_backtest_for_strategy(
         db_backtest.benchmark_metrics = benchmark_metrics
 
         db_backtest.status = "success"
+        logs_data = {
+            "engine_summary": str(result),
+            "risk_config": risk_config,
+            "trades": _extract_trades(result),
+            "candles": _extract_candles(data_input, symbols),
+        }
         db_backtest.logs = json.dumps(
-            {"engine_summary": str(result), "risk_config": risk_config},
+            logs_data,
             ensure_ascii=False,
             default=str,
         )
