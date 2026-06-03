@@ -1,0 +1,15 @@
+- [用户画像](user.md) — 个人量化交易者，中文，Python/Vue 全栈
+- [项目进度](project.md) — QuantEvo 已完成 Phase 0~2，待办 Phase 3~4
+- [关键决策](feedback.md) — 首页双状态、保留原有功能、中文内容、数据库重建注意
+- [方向调整](direction-pivot.md) — 2026-06-01 从专业量化工具转向投资小白快速上手工具
+- [策略生成设计](strategy-generation-design.md) — Hybrid引擎、七大策略家族、入池标准、动态寿命、三维同质化
+- [核心设计V2](core-design-v2.md) — 全链路服务、重构问卷、五层市场评估、Hybrid组合引擎、智能体策略发现
+- [最终设计V3](final-design-v3.md) — 统一信号融合框架、15题问卷、五层市场评估、全链路服务、已知遗留问题
+- [架构文档V2](../quant-trading-app/docs/architecture-v2.md) — 重构后的项目逻辑链路结构
+- [用户旅程V2](../quant-trading-app/docs/user-journey-v2.md) — 重构后的页面模块逻辑关系图
+- [前端风格规范](frontend-style-guide.md) — 黑白灰质感设计系统
+- [实现路径V1](implementation-roadmap.md) — Phase A~D 原始16周计划（已废弃）
+- [实现路径V2](implementation-roadmap-v2.md) — Phase A~D 完整版18周（含知识库基础+遗漏补充）
+- [Phase B计划V2](phase-b-plan-v2.md) — Phase B调整版：知识库基础+完整Hybrid引擎
+- [设计决策日志](design-decisions-log.md) — 用户意见驱动的设计变更记录（前端风格/Phase B路径/爬虫改进/后台运行/遗漏补充）
+- [项目实时进度](project-progress.md) — 自动更新的项目进度追踪
