@@ -1,0 +1,70 @@
+import client from './client'
+
+export interface Question {
+  id: string
+  category: string
+  question: string
+  options: {
+    label: string
+    scores: Record<string, number>
+  }[]
+}
+
+export interface ProfileVector {
+  risk_tolerance: number
+  loss_aversion: number
+  herding_tendency: number
+  overconfidence: number
+  delayed_gratification: number
+  security_need: number
+  time_horizon_score: number
+  experience_level: number
+  capital_tier: number
+  income_stability: number
+  debt_pressure: number
+  information_processing: number
+  social_pressure: number
+  emergency_response: number
+  anchoring_effect: number
+}
+
+export interface ProfileLabels {
+  risk_label: string
+  time_horizon_label: string
+  experience_label: string
+}
+
+export interface InvestorProfile {
+  id: number
+  user_id: number
+  answers_json: Record<string, string>
+  risk_tolerance: number
+  loss_aversion: number
+  herding_tendency: number
+  overconfidence: number
+  delayed_gratification: number
+  security_need: number
+  time_horizon_score: number
+  experience_level: number
+  capital_tier: number
+  income_stability: number
+  debt_pressure: number
+  information_processing: number
+  social_pressure: number
+  emergency_response: number
+  anchoring_effect: number
+  risk_label: string | null
+  time_horizon_label: string | null
+  experience_label: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export const profileApi = {
+  getQuestions: () => client.get<Question[]>('/profiles/questions').then(r => r.data),
+  preview: (answers: Record<string, string>) => client.post<{ vector: ProfileVector; labels: ProfileLabels }>('/profiles/preview', answers).then(r => r.data),
+  create: (userId: number, answers: Record<string, string>) => client.post<InvestorProfile>('/profiles', { user_id: userId, answers_json: answers }).then(r => r.data),
+  getByUser: (userId: number) => client.get<InvestorProfile | null>(`/profiles/user/${userId}`).then(r => r.data),
+  update: (profileId: number, userId: number, answers: Record<string, string>) => client.put<InvestorProfile>(`/profiles/${profileId}`, { user_id: userId, answers_json: answers }).then(r => r.data),
+}

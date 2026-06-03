@@ -8,3 +8,10 @@ from app.models.stock_picker import StockPool, StockPoolItem, PickerRun, Notific
 from app.models.risk_strategy import RiskStrategyConfig
 from app.models.strategy_flow import StrategyFlow
 from app.models.strategy_dna import StrategyDNA, StrategyPhylogeny
+from app.models.user import User
+from app.models.investor_profile import InvestorProfile
+from app.models.portfolio import Portfolio
+from app.models.market_signal import MarketSignal
+from app.models.portfolio_holding import PortfolioHolding
+from app.models.strategy_template import StrategyTemplate
+from app.models.paper_knowledge import PaperKnowledge

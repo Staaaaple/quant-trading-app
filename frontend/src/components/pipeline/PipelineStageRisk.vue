@@ -7,6 +7,7 @@ interface RiskCheck {
 
 const props = defineProps<{
   checks: RiskCheck[]
+  isNlGenerated?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -50,6 +51,7 @@ function updateCheck(idx: number, patch: Partial<RiskCheck>) {
         :value="check.type"
         @change="updateCheck(idx, { type: ($event.target as HTMLSelectElement).value })"
         class="form-select"
+        :class="{ 'nl-field': isNlGenerated }"
       >
         <option v-for="t in CHECK_TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
       </select>
@@ -62,11 +64,13 @@ function updateCheck(idx: number, patch: Partial<RiskCheck>) {
         max="1"
         step="0.01"
         class="form-input form-input--xs"
+        :class="{ 'nl-field': isNlGenerated }"
       />
       <select
         :value="check.action"
         @change="updateCheck(idx, { action: ($event.target as HTMLSelectElement).value })"
         class="form-select"
+        :class="{ 'nl-field': isNlGenerated }"
       >
         <option v-for="a in ACTIONS" :key="a.value" :value="a.value">{{ a.label }}</option>
       </select>
@@ -106,5 +110,11 @@ function updateCheck(idx: number, patch: Partial<RiskCheck>) {
   background: var(--bg-base);
   color: var(--text-primary);
   font-size: 0.85rem;
+}
+
+.nl-field {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 1px;
+  background: rgba(245, 158, 11, 0.06);
 }
 </style>

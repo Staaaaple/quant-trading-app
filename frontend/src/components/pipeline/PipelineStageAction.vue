@@ -8,6 +8,7 @@ interface ActionRule {
 const props = defineProps<{
   rules: ActionRule[]
   signalGroups: string[]
+  isNlGenerated?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -45,6 +46,7 @@ function updateRule(idx: number, patch: Partial<ActionRule>) {
         :value="rule.signal_group"
         @change="updateRule(idx, { signal_group: ($event.target as HTMLSelectElement).value })"
         class="form-select"
+        :class="{ 'nl-field': isNlGenerated }"
       >
         <option v-for="g in signalGroups" :key="g" :value="g">{{ g }}</option>
       </select>
@@ -53,6 +55,7 @@ function updateRule(idx: number, patch: Partial<ActionRule>) {
         :value="rule.action"
         @change="updateRule(idx, { action: ($event.target as HTMLSelectElement).value })"
         class="form-select"
+        :class="{ 'nl-field': isNlGenerated }"
       >
         <option value="order_target_percent">调整仓位至</option>
       </select>
@@ -64,6 +67,7 @@ function updateRule(idx: number, patch: Partial<ActionRule>) {
           min="0"
           max="100"
           class="form-slider"
+          :class="{ 'nl-field': isNlGenerated }"
         />
         <span class="slider-value" :class="{ 'text-loss': rule.weight === 0 }">{{ Math.round(rule.weight * 100) }}%</span>
       </div>
@@ -116,5 +120,11 @@ function updateRule(idx: number, patch: Partial<ActionRule>) {
   background: var(--bg-base);
   color: var(--text-primary);
   font-size: 0.85rem;
+}
+
+.nl-field {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 1px;
+  background: rgba(245, 158, 11, 0.06);
 }
 </style>

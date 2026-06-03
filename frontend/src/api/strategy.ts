@@ -23,6 +23,15 @@ export interface CodePreviewResponse {
   code: string
 }
 
+export interface NlParseResponse {
+  pipeline_config: Record<string, any> | null
+  confidence: number
+  warnings: string[]
+  complex_keywords_found: string[]
+  matched_spans: [number, number, string][]
+  unmatched_spans: [number, number][]
+}
+
 export const strategyApi = {
   list(query?: string): Promise<Strategy[]> {
     return request(`/strategies${query || ''}`)
@@ -51,6 +60,12 @@ export const strategyApi = {
     return request('/strategies/preview-code', {
       method: 'POST',
       body: JSON.stringify({ pipeline_config: pipelineConfig }),
+    })
+  },
+  parseNl(text: string): Promise<NlParseResponse> {
+    return request('/strategies/parse-nl', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
     })
   },
 }

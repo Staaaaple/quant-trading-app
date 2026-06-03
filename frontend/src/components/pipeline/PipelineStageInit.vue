@@ -8,6 +8,7 @@ interface InitConfig {
 
 const props = defineProps<{
   config: InitConfig
+  isNlGenerated?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,13 +30,13 @@ const maxPos = computed({
   <div class="stage-form">
     <div class="form-row">
       <label class="form-label">历史数据深度</label>
-      <input v-model.number="depth" type="number" min="5" max="250" class="form-input form-input--sm" />
+      <input v-model.number="depth" type="number" min="5" max="250" class="form-input form-input--sm" :class="{ 'nl-field': isNlGenerated }" />
       <span class="form-hint">根K线（影响指标计算所需数据量）</span>
     </div>
     <div class="form-row">
       <label class="form-label">最大持仓比例</label>
       <div class="slider-wrap">
-        <input v-model.number="maxPos" type="range" min="10" max="100" class="form-slider" />
+        <input v-model.number="maxPos" type="range" min="10" max="100" class="form-slider" :class="{ 'nl-field': isNlGenerated }" />
         <span class="slider-value">{{ maxPos }}%</span>
       </div>
     </div>
@@ -88,5 +89,11 @@ const maxPos = computed({
   font-weight: 600;
   color: var(--text-primary);
   min-width: 40px;
+}
+
+.nl-field {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 1px;
+  background: rgba(245, 158, 11, 0.06);
 }
 </style>

@@ -20,6 +20,7 @@ interface SignalGroup {
 const props = defineProps<{
   groups: SignalGroup[]
   availableIndicators: string[]
+  isNlGenerated?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -81,7 +82,7 @@ function setOperand(side: 'left' | 'right', gidx: number, cidx: number, type: 'i
   const list = [...props.groups]
   const cond = list[gidx].conditions[cidx]
   if (type === 'indicator') {
-    cond[side] = { indicator: val || null, value: null }
+    cond[side] = { indicator: val ?? null, value: null }
   } else {
     cond[side] = { indicator: null, value: Number(val) || 0 }
   }
@@ -103,12 +104,14 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
           @input="updateGroup(gidx, { id: ($event.target as HTMLInputElement).value })"
           type="text"
           class="form-input"
+          :class="{ 'nl-field': isNlGenerated }"
           placeholder="信号组名称"
         />
         <select
           :value="group.direction"
           @change="updateGroup(gidx, { direction: ($event.target as HTMLSelectElement).value })"
           class="form-select"
+          :class="{ 'nl-field': isNlGenerated }"
         >
           <option value="buy">买入</option>
           <option value="sell">卖出</option>
@@ -117,6 +120,7 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
           :value="group.logic"
           @change="updateGroup(gidx, { logic: ($event.target as HTMLSelectElement).value })"
           class="form-select"
+          :class="{ 'nl-field': isNlGenerated }"
         >
           <option value="AND">全部满足</option>
           <option value="OR">任一满足</option>
@@ -129,8 +133,9 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
           <div class="operand">
             <select
               :value="operandType(cond.left)"
-              @change="setOperand('left', gidx, cidx, ($event.target as HTMLSelectElement).value as 'indicator' | 'value', null)"
+              @change="setOperand('left', gidx, cidx, ($event.target as HTMLSelectElement).value as 'indicator' | 'value', ($event.target as HTMLSelectElement).value === 'indicator' ? '' : 0)"
               class="form-select form-select--type"
+              :class="{ 'nl-field': isNlGenerated }"
             >
               <option value="indicator">指标</option>
               <option value="value">数值</option>
@@ -140,6 +145,7 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
               :value="cond.left.indicator || ''"
               @change="setOperand('left', gidx, cidx, 'indicator', ($event.target as HTMLSelectElement).value)"
               class="form-select"
+              :class="{ 'nl-field': isNlGenerated }"
             >
               <option value="">选择指标</option>
               <option v-for="ind in availableIndicators" :key="ind" :value="ind">{{ ind }}</option>
@@ -150,6 +156,7 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
               @input="setOperand('left', gidx, cidx, 'value', ($event.target as HTMLInputElement).value)"
               type="number"
               class="form-input form-input--sm"
+              :class="{ 'nl-field': isNlGenerated }"
               placeholder="数值"
             />
           </div>
@@ -158,6 +165,7 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
             :value="cond.op"
             @change="updateCondition(gidx, cidx, { op: ($event.target as HTMLSelectElement).value })"
             class="form-select"
+            :class="{ 'nl-field': isNlGenerated }"
           >
             <option v-for="op in OPS" :key="op.value" :value="op.value">{{ op.label }}</option>
           </select>
@@ -165,8 +173,9 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
           <div class="operand">
             <select
               :value="operandType(cond.right)"
-              @change="setOperand('right', gidx, cidx, ($event.target as HTMLSelectElement).value as 'indicator' | 'value', null)"
+              @change="setOperand('right', gidx, cidx, ($event.target as HTMLSelectElement).value as 'indicator' | 'value', ($event.target as HTMLSelectElement).value === 'indicator' ? '' : 0)"
               class="form-select form-select--type"
+              :class="{ 'nl-field': isNlGenerated }"
             >
               <option value="indicator">指标</option>
               <option value="value">数值</option>
@@ -176,6 +185,7 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
               :value="cond.right.indicator || ''"
               @change="setOperand('right', gidx, cidx, 'indicator', ($event.target as HTMLSelectElement).value)"
               class="form-select"
+              :class="{ 'nl-field': isNlGenerated }"
             >
               <option value="">选择指标</option>
               <option v-for="ind in availableIndicators" :key="ind" :value="ind">{{ ind }}</option>
@@ -186,6 +196,7 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
               @input="setOperand('right', gidx, cidx, 'value', ($event.target as HTMLInputElement).value)"
               type="number"
               class="form-input form-input--sm"
+              :class="{ 'nl-field': isNlGenerated }"
               placeholder="数值"
             />
           </div>
@@ -255,5 +266,11 @@ function operandType(op: ConditionOperand): 'indicator' | 'value' {
   background: var(--bg-base);
   color: var(--text-primary);
   font-size: 0.85rem;
+}
+
+.nl-field {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 1px;
+  background: rgba(245, 158, 11, 0.06);
 }
 </style>

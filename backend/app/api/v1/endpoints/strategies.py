@@ -8,8 +8,10 @@ from app.schemas.strategy import (
     StrategyUpdate,
     CodePreviewPayload,
     CodePreviewResponse,
+    NlParsePayload,
+    NlParseResponse,
 )
-from app.services import strategy_service, pipeline_generator
+from app.services import strategy_service, pipeline_generator, nl_parser
 
 router = APIRouter()
 
@@ -103,4 +105,27 @@ def preview_code(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Code generation failed: {e}",
+        )
+
+
+@router.post("/parse-nl", response_model=NlParseResponse)
+def parse_nl_endpoint(
+    *,
+    payload: NlParsePayload,
+):
+    """解析自然语言策略描述为流水线配置."""
+    try:
+        result = nl_parser.parse_nl(payload.text)
+        return NlParseResponse(
+            pipeline_config=result["pipeline_config"],
+            confidence=result["confidence"],
+            warnings=result["warnings"],
+            complex_keywords_found=result["complex_keywords_found"],
+            matched_spans=result["matched_spans"],
+            unmatched_spans=result["unmatched_spans"],
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Parse failed: {e}",
         )

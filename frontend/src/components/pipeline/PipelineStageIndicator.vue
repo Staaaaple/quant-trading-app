@@ -10,6 +10,7 @@ interface IndicatorDef {
 
 const props = defineProps<{
   indicators: IndicatorDef[]
+  isNlGenerated?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -64,13 +65,14 @@ const nameMap = computed(() => {
         @input="updateIndicator(idx, { name: ($event.target as HTMLInputElement).value })"
         type="text"
         class="form-input"
+        :class="{ 'input-error': nameMap.get(ind.name)! > 1, 'nl-field': isNlGenerated }"
         placeholder="指标名"
-        :class="{ 'input-error': nameMap.get(ind.name)! > 1 }"
       />
       <select
         :value="ind.type"
         @change="updateIndicator(idx, { type: ($event.target as HTMLSelectElement).value })"
         class="form-select"
+        :class="{ 'nl-field': isNlGenerated }"
       >
         <option v-for="t in INDICATOR_TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
       </select>
@@ -82,6 +84,7 @@ const nameMap = computed(() => {
         min="1"
         max="250"
         class="form-input form-input--xs"
+        :class="{ 'nl-field': isNlGenerated }"
         placeholder="周期"
       />
       <select
@@ -89,6 +92,7 @@ const nameMap = computed(() => {
         :value="ind.field"
         @change="updateIndicator(idx, { field: ($event.target as HTMLSelectElement).value })"
         class="form-select"
+        :class="{ 'nl-field': isNlGenerated }"
       >
         <option v-for="f in FIELDS" :key="f" :value="f">{{ f }}</option>
       </select>
@@ -131,5 +135,11 @@ const nameMap = computed(() => {
 
 .input-error {
   border-color: var(--error) !important;
+}
+
+.nl-field {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 1px;
+  background: rgba(245, 158, 11, 0.06);
 }
 </style>

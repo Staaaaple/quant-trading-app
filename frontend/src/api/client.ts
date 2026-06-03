@@ -16,3 +16,16 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   }
   return resp.json() as Promise<T>
 }
+
+const client = {
+  get: <T>(path: string) =>
+    request<T>(path, { method: 'GET' }).then(data => ({ data })),
+  post: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }).then(data => ({ data })),
+  put: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }).then(data => ({ data })),
+  delete: <T>(path: string) =>
+    request<T>(path, { method: 'DELETE' }).then(data => ({ data })),
+}
+
+export default client
