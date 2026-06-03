@@ -1,7 +1,11 @@
 {
+  "autoMemoryEnabled": true,
+  "autoMemoryDirectory": ".claude/memory",
   "permissions": {
     "allow": [
       "Bash(npx vue-tsc *)",
+      "Write(.claude/memory/*)",
+      "Read(.claude/memory/*)",
       "Bash(grep -E \"\\\\.\\(py|ts|js|vue\\)$\")",
       "Bash(python -c \"from app.api.v1.endpoints.dna import router; print\\('DNA router OK'\\)\")",
       "Bash(python -c \"from app.api.v1.endpoints.paper_trading import router; print\\('Paper trading router OK'\\)\")",

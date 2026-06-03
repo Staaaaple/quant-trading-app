@@ -99,3 +99,16 @@ class CodePreviewPayload(BaseModel):
 
 class CodePreviewResponse(BaseModel):
     code: str
+
+
+class NlParsePayload(BaseModel):
+    text: str
+
+
+class NlParseResponse(BaseModel):
+    pipeline_config: dict[str, Any] | None
+    confidence: float
+    warnings: list[str]
+    complex_keywords_found: list[str]
+    matched_spans: list[tuple[int, int, str]]
+    unmatched_spans: list[tuple[int, int]]

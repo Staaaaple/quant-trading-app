@@ -48,7 +48,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="layout">
+  <div v-if="route.meta.layout === 'demo'" class="demo-layout">
+    <RouterView />
+  </div>
+  <div v-else class="layout">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-icon">Q</div>
@@ -117,6 +120,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.demo-layout {
+  min-height: 100vh;
+}
+
 .layout {
   display: flex;
   min-height: 100vh;
