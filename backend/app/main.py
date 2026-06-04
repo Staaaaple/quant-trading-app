@@ -1,8 +1,10 @@
 import contextlib
+import os
 from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -145,6 +147,12 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# 挂载前端静态文件（生产环境）
+_dist_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
+if os.path.exists(_dist_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(_dist_path, "assets")), name="assets")
+    app.mount("/", StaticFiles(directory=_dist_path, html=True), name="static")
 
 
 @app.get("/health")
