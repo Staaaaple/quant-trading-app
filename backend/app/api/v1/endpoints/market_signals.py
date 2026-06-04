@@ -25,11 +25,18 @@ def get_latest(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No market signal found")
 
     from app.schemas.market_signal import MacroLayer, GeoLayer, IndustryLayer, SocialLayer, InternalLayer
+
+    # 构建 cycle_analysis（从数据库读取）
+    cycle_analysis = None
+    if ms.cycle_analysis:
+        cycle_analysis = ms.cycle_analysis
+
     return MarketSignalLatest(
         date=ms.date,
         composite_score=ms.composite_score or 0,
         market_mood=ms.market_mood or "中性",
         market_cycle=ms.market_cycle or "复苏",
+        cycle_analysis=cycle_analysis,
         macro=MacroLayer(
             cycle_phase=ms.macro_cycle_phase,
             gdp_trend=ms.macro_gdp_trend,

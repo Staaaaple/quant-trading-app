@@ -29,6 +29,12 @@ const router = createRouter({
       component: () => import('../views/ProfileResult.vue'),
     },
     {
+      path: '/profile/summary',
+      name: 'profile-summary',
+      meta: { titleKey: 'nav.home', layout: 'demo' },
+      component: () => import('../views/ProfileSummary.vue'),
+    },
+    {
       path: '/market',
       name: 'market',
       meta: { titleKey: 'nav.home', layout: 'demo' },
@@ -39,6 +45,12 @@ const router = createRouter({
       name: 'portfolio',
       meta: { titleKey: 'nav.home', layout: 'demo' },
       component: () => import('../views/PortfolioBuilder.vue'),
+    },
+    {
+      path: '/portfolio/strategies',
+      name: 'portfolio-strategies',
+      meta: { titleKey: 'nav.home', layout: 'demo' },
+      component: () => import('../views/StrategyMatch.vue'),
     },
     {
       path: '/recommendation',

@@ -51,6 +51,7 @@ onMounted(() => {
 <template>
   <div v-if="route.meta.layout === 'demo'" class="demo-layout">
     <RouterView />
+    <div class="disclaimer">本应用仅供学习交流，不构成任何投资建议。市场有风险，投资需谨慎。</div>
   </div>
   <div v-else class="layout">
     <aside class="sidebar">
@@ -117,6 +118,7 @@ onMounted(() => {
       <div class="main-content">
         <RouterView />
       </div>
+      <div class="disclaimer">本应用仅供学习交流，不构成任何投资建议。市场有风险，投资需谨慎。</div>
     </main>
   </div>
 </template>
@@ -313,5 +315,24 @@ onMounted(() => {
   max-width: var(--content-max-width);
   width: 100%;
   margin: 0 auto;
+}
+
+.disclaimer {
+  position: fixed;
+  bottom: 8px;
+  right: 12px;
+  font-size: 0.65rem;
+  color: #a3a3a3;
+  opacity: 0.6;
+  z-index: 100;
+  pointer-events: none;
+  text-align: right;
+  line-height: 1.4;
+  max-width: 280px;
+}
+
+.demo-layout .disclaimer {
+  bottom: 8px;
+  right: 12px;
 }
 </style>

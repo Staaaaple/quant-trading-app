@@ -18,6 +18,12 @@ from sqlalchemy.orm import Session
 
 from app.models.market_signal import MarketSignal
 from app.services import news_crawler
+from app.services.cycle_models import (
+    merrill_lunch_clock,
+    monetary_credit_cycle,
+    inventory_cycle,
+    fuse_cycle_phases,
+)
 
 
 # ── 权重配置 ──
@@ -31,7 +37,7 @@ LAYER_WEIGHTS = {
 
 
 def _fetch_macro_data() -> dict[str, Any]:
-    """获取宏观数据并计算评分."""
+    """获取宏观数据并计算评分（多模型融合版）."""
     result = {
         "gdp_trend": "企稳",
         "inflation_level": "温和",
@@ -58,14 +64,15 @@ def _fetch_macro_data() -> dict[str, Any]:
         print(f"GDP fetch error: {e}")
 
     try:
-        # CPI
+        # CPI — 用同比增长率，不是指数值
         cpi_df = ak.macro_china_cpi()
         if not cpi_df.empty:
-            latest_cpi = float(cpi_df.iloc[0].get("全国-当月", cpi_df.iloc[0].get(cpi_df.columns[1], 0)))
+            # 优先取"全国-同比增长"，回退到第3列
+            latest_cpi = float(cpi_df.iloc[0].get("全国-同比增长", cpi_df.iloc[0].get(cpi_df.columns[2], 0)))
             result["cpi_yoy"] = round(latest_cpi, 2)
-            if latest_cpi < 1.0:
+            if latest_cpi < 0.5:
                 result["inflation_level"] = "低"
-            elif latest_cpi < 3.0:
+            elif latest_cpi < 2.0:
                 result["inflation_level"] = "温和"
             else:
                 result["inflation_level"] = "高"
@@ -103,6 +110,7 @@ def _fetch_macro_data() -> dict[str, Any]:
             latest_lpr = float(lpr_df.iloc[0].get("LPR_1Y", lpr_df.iloc[0].get(lpr_df.columns[1], 3.5)))
             prev_lpr = float(lpr_df.iloc[1].get("LPR_1Y", lpr_df.iloc[1].get(lpr_df.columns[1], 3.5)))
             result["lpr_1y"] = round(latest_lpr, 2)
+            result["lpr_prev"] = round(prev_lpr, 2)
             if latest_lpr < prev_lpr - 0.05:
                 result["interest_rate"] = "下行"
             elif latest_lpr > prev_lpr + 0.05:
@@ -112,18 +120,93 @@ def _fetch_macro_data() -> dict[str, Any]:
     except Exception as e:
         print(f"LPR fetch error: {e}")
 
-    # 计算宏观评分 (0-100) 和周期判断
-    result["score"], result["cycle_phase"] = _calculate_macro_score(result)
+    try:
+        # 社融增速 — 数据为绝对增量（亿元），需自行计算同比增速
+        sf_df = ak.macro_china_shrzgm()
+        if not sf_df.empty and len(sf_df) >= 13:
+            # 取最近一个月和去年同期
+            latest_sf = float(sf_df.iloc[0].get("社会融资规模增量", sf_df.iloc[0].get(sf_df.columns[1], 0)))
+            yoy_sf = float(sf_df.iloc[12].get("社会融资规模增量", sf_df.iloc[12].get(sf_df.columns[1], 0)))
+            if yoy_sf != 0:
+                sf_yoy = (latest_sf / yoy_sf - 1) * 100
+                result["social_financing_yoy"] = round(sf_yoy, 2)
+    except Exception as e:
+        print(f"Social financing fetch error: {e}")
+
+    try:
+        # 失业率
+        unemployment_df = ak.macro_china_urban_unemployment()
+        if not unemployment_df.empty:
+            latest_unemployment = float(unemployment_df.iloc[0].get("全国城镇调查失业率", unemployment_df.iloc[0].get(unemployment_df.columns[1], 5.0)))
+            result["unemployment_rate"] = round(latest_unemployment, 2)
+    except Exception as e:
+        print(f"Unemployment fetch error: {e}")
+
+    try:
+        # 工业企业利润
+        profit_df = ak.macro_china_industrial_profit()
+        if not profit_df.empty:
+            latest_profit_yoy = float(profit_df.iloc[0].get("规模以上工业企业利润总额-同比增长", profit_df.iloc[0].get(profit_df.columns[1], 0)))
+            result["industrial_profit_yoy"] = round(latest_profit_yoy, 2)
+    except Exception as e:
+        print(f"Industrial profit fetch error: {e}")
+
+    try:
+        # PPI（工业生产者出厂价格指数）— 用当月同比增长
+        ppi_df = ak.macro_china_ppi()
+        if not ppi_df.empty:
+            latest_ppi = float(ppi_df.iloc[0].get("当月同比增长", ppi_df.iloc[0].get(ppi_df.columns[2], 0)))
+            result["ppi_yoy"] = round(latest_ppi, 2)
+    except Exception as e:
+        print(f"PPI fetch error: {e}")
+
+    try:
+        # 房地产投资增速 — 返回的是指数值，取涨跌幅列
+        re_df = ak.macro_china_real_estate()
+        if not re_df.empty:
+            # 取最新有数据的行（倒序找第一个非NaN涨跌幅）
+            for i in range(min(12, len(re_df))):
+                change = re_df.iloc[i].get("涨跌幅")
+                if pd.notna(change):
+                    result["real_estate_investment_yoy"] = round(float(change), 2)
+                    break
+    except Exception as e:
+        print(f"Real estate investment fetch error: {e}")
+
+    # 计算宏观评分 (0-100) 和周期判断（多模型融合）
+    result["score"], result["cycle_phase"], result["cycle_analysis"] = _calculate_macro_score(result)
     return result
 
 
-def _calculate_macro_score(data: dict[str, Any]) -> tuple[float, str]:
-    """根据宏观数据计算评分和周期阶段."""
-    score = 50.0
+def _calculate_macro_score(data: dict[str, Any]) -> tuple[float, str, dict[str, Any]]:
+    """根据宏观数据计算评分和周期阶段（多模型融合版）.
+
+    融合三大模型（中国特供版）：
+      1. 美林时钟修正版（GDP + CPI + PPI）
+      2. 货币信用周期（M2 + 社融 + 利率 + 房地产）
+      3. 库存周期（PMI + 工业企业利润 + PPI）
+    """
     gdp_yoy = data.get("gdp_yoy", 5.0)
     cpi_yoy = data.get("cpi_yoy", 2.0)
+    ppi_yoy = data.get("ppi_yoy")
     pmi = data.get("pmi", 50.0)
     m2_yoy = data.get("m2_yoy", 10.0)
+    lpr_1y = data.get("lpr_1y")
+    lpr_prev = data.get("lpr_prev")
+    social_financing_yoy = data.get("social_financing_yoy")
+    industrial_profit_yoy = data.get("industrial_profit_yoy")
+    real_estate_investment_yoy = data.get("real_estate_investment_yoy")
+
+    # 运行三大模型（新版）
+    merrill = merrill_lunch_clock(gdp_yoy, cpi_yoy, ppi_yoy)
+    monetary = monetary_credit_cycle(m2_yoy, social_financing_yoy, lpr_1y, lpr_prev, real_estate_investment_yoy)
+    inventory = inventory_cycle(pmi, industrial_profit_yoy, ppi_yoy)
+
+    # 融合
+    fused = fuse_cycle_phases([merrill, monetary, inventory])
+
+    # 综合评分（基于融合结果 + 传统因子）
+    score = 50.0
 
     # GDP 贡献 -10 ~ +20
     if gdp_yoy > 6:
@@ -137,11 +220,11 @@ def _calculate_macro_score(data: dict[str, Any]) -> tuple[float, str]:
 
     # CPI 贡献 -10 ~ +10
     if 1.0 <= cpi_yoy <= 3.0:
-        score += 10  # 温和通胀是最佳状态
+        score += 10
     elif cpi_yoy > 4.0:
-        score -= 10  # 高通胀
+        score -= 10
     elif cpi_yoy < 0.5:
-        score -= 5   # 通缩风险
+        score -= 5
 
     # PMI 贡献 -10 ~ +15
     if pmi > 52:
@@ -159,19 +242,17 @@ def _calculate_macro_score(data: dict[str, Any]) -> tuple[float, str]:
     elif m2_yoy < 7:
         score -= 5
 
-    score = max(0, min(100, score))
+    # 融合结果微调（置信度高时加强信号）
+    confidence = fused.get("confidence", 50)
+    if confidence > 70:
+        if fused["final_phase"] in ["复苏", "复苏早期", "主动补库", "宽货币宽信用"]:
+            score += 5
+        elif fused["final_phase"] in ["滞胀", "衰退", "主动去库", "紧货币紧信用"]:
+            score -= 5
 
-    # 周期判断（简化版）
-    if gdp_yoy > 5 and cpi_yoy < 2.5:
-        cycle = "复苏"
-    elif gdp_yoy > 5 and cpi_yoy >= 3:
-        cycle = "过热"
-    elif gdp_yoy <= 4 and cpi_yoy >= 3:
-        cycle = "滞胀"
-    else:
-        cycle = "衰退"
+    score = max(0, min(100, round(score, 1)))
 
-    return round(score, 1), cycle
+    return score, fused["final_phase"], fused
 
 
 def _fetch_internal_data() -> dict[str, Any]:
@@ -286,6 +367,7 @@ def collect_market_signal() -> dict[str, Any]:
         "composite_score": composite,
         "market_mood": mood,
         "market_cycle": macro["cycle_phase"],
+        "cycle_analysis": macro.get("cycle_analysis"),
         "raw_data": {
             "news_count": news_analysis["news_count"],
             "news_titles": news_analysis["raw_titles"],
@@ -294,7 +376,14 @@ def collect_market_signal() -> dict[str, Any]:
 
 
 def save_market_signal(db: Session, signal_data: dict[str, Any]) -> MarketSignal:
-    """保存市场信号到数据库."""
+    """保存市场信号到数据库（覆盖当天已有记录）."""
+    from sqlalchemy import delete
+
+    today = datetime.date.today()
+    # 覆盖模式：先删除当天已有记录
+    db.execute(delete(MarketSignal).where(MarketSignal.date == today))
+    db.commit()
+
     macro = signal_data["macro"]
     geo = signal_data["geo"]
     industry = signal_data["industry"]
@@ -302,7 +391,7 @@ def save_market_signal(db: Session, signal_data: dict[str, Any]) -> MarketSignal
     internal = signal_data["internal"]
 
     ms = MarketSignal(
-        date=datetime.date.today(),
+        date=today,
         macro_cycle_phase=macro["cycle_phase"],
         macro_gdp_trend=macro["gdp_trend"],
         macro_inflation_level=macro["inflation_level"],
@@ -327,6 +416,7 @@ def save_market_signal(db: Session, signal_data: dict[str, Any]) -> MarketSignal
         internal_volatility_regime=internal.get("volatility_regime"),
         internal_score=internal["score"],
         composite_score=signal_data["composite_score"],
+        cycle_analysis=signal_data.get("cycle_analysis"),
         market_mood=signal_data["market_mood"],
         market_cycle=signal_data["market_cycle"],
         raw_data=signal_data["raw_data"],

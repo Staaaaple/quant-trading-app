@@ -47,6 +47,9 @@ class MarketSignal(Base):
     market_mood = Column(String(16), nullable=True)          # 中性偏乐观/...
     market_cycle = Column(String(16), nullable=True)         # 复苏期/...
 
+    # 周期分析（多模型融合结果）
+    cycle_analysis = Column(JSON, nullable=True)
+
     # 原始数据（用于调试和重新计算）
     raw_data = Column(JSON, nullable=True)
 

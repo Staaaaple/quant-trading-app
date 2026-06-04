@@ -4,12 +4,11 @@ from typing import Any
 
 
 class InvestorProfileBase(BaseModel):
-    user_id: int
     answers_json: dict[str, Any]
 
 
 class InvestorProfileCreate(InvestorProfileBase):
-    pass
+    user_id: int | None = None  # 从 header 读取，body 中可选
 
 
 class InvestorProfileUpdate(BaseModel):
@@ -32,6 +31,10 @@ class InvestorProfileVector(BaseModel):
     social_pressure: float
     emergency_response: float
     anchoring_effect: float
+    # NEW v2
+    diversification_preference: float
+    stop_loss_discipline: float
+    emotional_stability: float
 
 
 class InvestorProfileRead(InvestorProfileBase):
@@ -53,6 +56,10 @@ class InvestorProfileRead(InvestorProfileBase):
     social_pressure: float
     emergency_response: float
     anchoring_effect: float
+    # NEW v2
+    diversification_preference: float
+    stop_loss_discipline: float
+    emotional_stability: float
     risk_label: str | None = None
     time_horizon_label: str | None = None
     experience_label: str | None = None

@@ -7,6 +7,27 @@ export interface MacroLayer {
   liquidity: string | null
   interest_rate: string | null
   score: number | null
+  cycle_analysis?: CycleAnalysis | null
+}
+
+export interface CycleAnalysis {
+  final_phase: string
+  final_description: string
+  final_asset_preference: string
+  confidence: number
+  fused_coordinates: Record<string, number>
+  model_results: CycleModelResult[]
+  consistency: number
+  data_completeness: number
+}
+
+export interface CycleModelResult {
+  model: string
+  phase: string
+  description: string
+  asset_preference: string
+  score: number
+  inputs: Record<string, number | null>
 }
 
 export interface GeoLayer {
@@ -43,6 +64,7 @@ export interface MarketSignalLatest {
   composite_score: number
   market_mood: string
   market_cycle: string
+  cycle_analysis?: CycleAnalysis | null
   macro: MacroLayer
   geo: GeoLayer
   industry: IndustryLayer

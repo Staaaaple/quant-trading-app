@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { userApi } from '@/api/user'
+import { useUserStore } from '@/stores/user'
 import { profileApi, type InvestorProfile } from '@/api/profile'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const profile = ref<InvestorProfile | null>(null)
 const loading = ref(true)
@@ -21,10 +22,11 @@ const radarDimensions = [
 async function loadProfile() {
   loading.value = true
   try {
-    const users = await userApi.list()
-    const user = users[0]
-    if (user) {
-      const p = await profileApi.getByUser(user.id)
+    if (!userStore.currentUserId) {
+      await userStore.loadUsers()
+    }
+    if (userStore.currentUserId) {
+      const p = await profileApi.getMine()
       if (p) profile.value = p
     }
   } catch (e) {

@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { userApi } from '@/api/user'
+import { useUserStore } from '@/stores/user'
 import { profileApi, type InvestorProfile } from '@/api/profile'
 import { marketSignalApi, type MarketSignalLatest } from '@/api/marketSignal'
 import { portfolioApi, type PortfolioDesignResult } from '@/api/portfolio'
+import UserSwitcher from '@/components/UserSwitcher.vue'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const hasProfile = ref(false)
 const profile = ref<InvestorProfile | null>(null)
@@ -18,29 +20,17 @@ const designing = ref(false)
 async function checkProfile() {
   loading.value = true
   try {
-    const users = await userApi.list()
-    if (users.length === 0) {
+    // 等待用户 store 加载完成
+    if (!userStore.currentUserId) {
+      await userStore.loadUsers()
+    }
+
+    if (!userStore.currentUserId) {
       hasProfile.value = false
       return
     }
 
-    // 获取当前用户（从 localStorage 或默认第一个）
-    const storedUserId = localStorage.getItem('active_user_id')
-    let user = null
-    if (storedUserId) {
-      user = users.find(u => u.id === parseInt(storedUserId))
-    }
-    if (!user) {
-      user = users[0]
-      localStorage.setItem('active_user_id', String(user.id))
-    }
-
-    if (!user) {
-      hasProfile.value = false
-      return
-    }
-
-    const p = await profileApi.getByUser(user.id)
+    const p = await profileApi.getMine()
     if (p) {
       hasProfile.value = true
       profile.value = p
@@ -55,6 +45,16 @@ async function checkProfile() {
   } finally {
     loading.value = false
   }
+}
+
+/** 监听用户切换事件 */
+function handleUserSwitched() {
+  // 重置状态并重新加载
+  hasProfile.value = false
+  profile.value = null
+  signal.value = null
+  portfolio.value = null
+  checkProfile()
 }
 
 async function loadDashboardData(p: InvestorProfile) {
@@ -84,6 +84,9 @@ async function loadDashboardData(p: InvestorProfile) {
       social_pressure: p.social_pressure,
       emergency_response: p.emergency_response,
       anchoring_effect: p.anchoring_effect,
+      diversification_preference: p.diversification_preference,
+      stop_loss_discipline: p.stop_loss_discipline,
+      emotional_stability: p.emotional_stability,
     }
 
     const marketSignal = {
@@ -139,6 +142,11 @@ const userName = ref('User')
 
 onMounted(() => {
   checkProfile()
+  window.addEventListener('user:switched', handleUserSwitched)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('user:switched', handleUserSwitched)
 })
 </script>
 
@@ -162,10 +170,7 @@ onMounted(() => {
           </div>
           <span class="brand-name">QUANT<span class="brand-muted">EVO</span></span>
         </div>
-        <div v-if="hasProfile" class="user-pill">
-          <span class="user-avatar">{{ userName[0] }}</span>
-          <span class="user-name">{{ userName }}</span>
-        </div>
+        <UserSwitcher />
       </div>
     </header>
 
@@ -232,6 +237,16 @@ onMounted(() => {
           <p class="hero-desc">基于市场五层信号模型，AI 为你定制策略配置</p>
         </div>
 
+        <button class="btn-primary" @click="goProfile">
+          <span>开始画像</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </button>
+
+        <p class="subline">
+          <span class="pulse-dot"></span>
+          本周已有 <strong>147</strong> 位用户完成画像
+        </p>
+
         <div class="feature-list">
           <div class="feature-card" @click="goProfile">
             <div class="feature-num">01</div>
@@ -261,16 +276,6 @@ onMounted(() => {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </div>
         </div>
-
-        <button class="btn-primary" @click="goProfile">
-          <span>开始画像</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </button>
-
-        <p class="subline">
-          <span class="pulse-dot"></span>
-          本周已有 <strong>147</strong> 位用户完成画像
-        </p>
       </template>
 
       <!-- ========== DASHBOARD ========== -->

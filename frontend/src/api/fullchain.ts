@@ -31,7 +31,6 @@ export function getBatchDetail(batchNo: number, payload: Omit<BuildingPlanPayloa
 // ── 推送系统 ──
 
 export interface DailyPushPayload {
-  user_id: number
   portfolio: Record<string, any>
   market_signal: Record<string, any>
   strategy_signals: any[]
@@ -90,7 +89,6 @@ export function createRebalancePlan(payload: {
 // ── 周报 ──
 
 export interface WeeklyReportPayload {
-  user_id: number
   portfolio: Record<string, any>
   market_signal: Record<string, any>
   performance_data: Record<string, any>

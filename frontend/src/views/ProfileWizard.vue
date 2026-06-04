@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 import { profileApi, type Question } from '@/api/profile'
-import { userApi } from '@/api/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const questions = ref<Question[]>([])
 const loading = ref(true)
 const currentStep = ref(0)
-const answers = ref<Record<string, string>>({})
+// 答案存储：单选为 string，多选为 string[]
+const answers = ref<Record<string, string | string[]>>({})
 const submitting = ref(false)
 
 const STEPS = [
@@ -18,9 +20,11 @@ const STEPS = [
   { title: '行为特征', desc: '分析你的投资行为模式' },
 ]
 
+const QUESTIONS_PER_STEP = 6
+
 const stepQuestions = computed(() => {
-  const start = currentStep.value * 5
-  return questions.value.slice(start, start + 5)
+  const start = currentStep.value * QUESTIONS_PER_STEP
+  return questions.value.slice(start, start + QUESTIONS_PER_STEP)
 })
 
 const progress = computed(() => {
@@ -29,12 +33,20 @@ const progress = computed(() => {
   return total > 0 ? Math.round((answered / total) * 100) : 0
 })
 
+/** 检查某题是否已回答 */
+function isQuestionAnswered(q: Question): boolean {
+  const ans = answers.value[q.id]
+  if (ans === undefined || ans === null) return false
+  if (Array.isArray(ans)) return ans.length > 0
+  return ans !== ''
+}
+
 const canNext = computed(() => {
-  return stepQuestions.value.every(q => answers.value[q.id] !== undefined)
+  return stepQuestions.value.every(q => isQuestionAnswered(q))
 })
 
 const canSubmit = computed(() => {
-  return questions.value.every(q => answers.value[q.id] !== undefined)
+  return questions.value.every(q => isQuestionAnswered(q))
 })
 
 async function loadQuestions() {
@@ -48,19 +60,54 @@ async function loadQuestions() {
   }
 }
 
-function selectOption(qid: string, label: string) {
-  answers.value[qid] = label
-}
-
-function nextStep() {
-  if (currentStep.value < STEPS.length - 1) {
-    currentStep.value++
+/** 处理选项点击：单选直接设置，多选切换 */
+function selectOption(q: Question, label: string) {
+  const isMulti = (q as any).multi === true
+  if (isMulti) {
+    const current = (answers.value[q.id] as string[] | undefined) || []
+    const idx = current.indexOf(label)
+    if (idx >= 0) {
+      // 取消选中
+      const next = current.filter((l) => l !== label)
+      if (next.length === 0) {
+        delete answers.value[q.id]
+      } else {
+        answers.value[q.id] = next
+      }
+    } else {
+      // 添加选中
+      answers.value[q.id] = [...current, label]
+    }
+  } else {
+    answers.value[q.id] = label
   }
 }
 
-function prevStep() {
+/** 检查某选项是否被选中 */
+function isSelected(q: Question, label: string): boolean {
+  const ans = answers.value[q.id]
+  if (ans === undefined || ans === null) return false
+  if (Array.isArray(ans)) return ans.includes(label)
+  return ans === label
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+async function nextStep() {
+  if (currentStep.value < STEPS.length - 1) {
+    currentStep.value++
+    await nextTick()
+    scrollToTop()
+  }
+}
+
+async function prevStep() {
   if (currentStep.value > 0) {
     currentStep.value--
+    await nextTick()
+    scrollToTop()
   }
 }
 
@@ -68,14 +115,15 @@ async function submit() {
   if (!canSubmit.value) return
   submitting.value = true
   try {
-    // Ensure a user exists (create default if none)
-    let users = await userApi.list()
-    let user = users[0]
-    if (!user) {
-      user = await userApi.create({ name: 'User_01' })
+    if (!userStore.currentUserId) {
+      await userStore.loadUsers()
     }
-    await profileApi.create(user.id, answers.value)
-    router.push('/')
+    if (!userStore.currentUserId) {
+      alert('请先创建用户')
+      return
+    }
+    await profileApi.create(answers.value)
+    router.push('/profile/summary')
   } catch (e) {
     console.error('Failed to submit profile:', e)
     alert('提交失败，请重试')
@@ -133,14 +181,14 @@ onMounted(() => {
             <button
               v-for="opt in (q?.options || [])"
               :key="opt.label"
-              :class="['option-btn', { selected: answers[q?.id] === opt.label }]"
-              @click="selectOption(q?.id, opt.label)"
+              :class="['option-btn', { selected: isSelected(q, opt.label) }]"
+              @click="selectOption(q, opt.label)"
             >
-              <span class="option-dot" v-if="q && answers[q.id] === opt.label">
+              <span class="option-dot" v-if="isSelected(q, opt.label)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               </span>
-              <span class="option-dot empty" v-else-if="q"></span>
-              <span class="option-label" v-if="q">{{ opt.label }}</span>
+              <span class="option-dot empty" v-else></span>
+              <span class="option-label">{{ opt.label }}</span>
             </button>
           </div>
         </div>

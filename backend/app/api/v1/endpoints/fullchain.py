@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from typing import Any
 
 from app.db.session import get_db
+from app.api.deps import get_current_user_id
 from app.services.onboarding_service import generate_full_onboarding
 from app.services.building_service import calculate_building_plan, calculate_single_batch
 from app.services.push_service import (
@@ -133,6 +134,7 @@ def get_batch_detail(
 def generate_daily_push(
     payload: dict[str, Any],
     db: Session = Depends(get_db),
+    header_user_id: int | None = Depends(get_current_user_id),
 ):
     """生成今日操作推送.
 
@@ -145,7 +147,7 @@ def generate_daily_push(
     }
     """
     try:
-        user_id = payload.get("user_id", 0)
+        user_id = header_user_id or payload.get("user_id", 0)
         portfolio = payload.get("portfolio", {})
         market_signal = payload.get("market_signal", {})
         strategy_signals = payload.get("strategy_signals", [])
@@ -313,6 +315,7 @@ def create_rebalance_plan(
 def create_weekly_report(
     payload: dict[str, Any],
     db: Session = Depends(get_db),
+    header_user_id: int | None = Depends(get_current_user_id),
 ):
     """生成周报.
 
@@ -326,7 +329,7 @@ def create_weekly_report(
     }
     """
     try:
-        user_id = payload.get("user_id", 0)
+        user_id = header_user_id or payload.get("user_id", 0)
         portfolio = payload.get("portfolio", {})
         market_signal = payload.get("market_signal", {})
         performance_data = payload.get("performance_data", {})
@@ -348,8 +351,12 @@ def create_weekly_report(
 def get_latest_weekly_report(
     user_id: int,
     db: Session = Depends(get_db),
+    header_user_id: int | None = Depends(get_current_user_id),
 ):
     """获取用户最新周报."""
+    # 验证只能访问自己的周报
+    if header_user_id and user_id != header_user_id:
+        raise HTTPException(status_code=403, detail="Can only access your own report")
     # TODO: 从数据库查询最新周报
     return {
         "success": True,

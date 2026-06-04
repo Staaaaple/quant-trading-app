@@ -9,10 +9,10 @@ class InvestorProfile(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
-    # Raw answers (15 questions)
+    # Raw answers (18 questions)
     answers_json = Column(JSON, nullable=False)
 
-    # Computed profile vector (15 dimensions, 1-10 scale)
+    # Computed profile vector (18 dimensions, 1-10 scale)
     risk_tolerance = Column(Float, nullable=False)           # 综合风险承受
     loss_aversion = Column(Float, nullable=False)            # 损失厌恶
     herding_tendency = Column(Float, nullable=False)         # 从众倾向
@@ -28,6 +28,10 @@ class InvestorProfile(Base):
     social_pressure = Column(Float, nullable=False)          # 社会压力承受
     emergency_response = Column(Float, nullable=False)       # 突发亏损应对
     anchoring_effect = Column(Float, nullable=False)         # 锚定效应
+    # NEW v2
+    diversification_preference = Column(Float, nullable=False)  # 分散化偏好
+    stop_loss_discipline = Column(Float, nullable=False)        # 止损纪律
+    emotional_stability = Column(Float, nullable=False)         # 情绪稳定性
 
     # Derived labels
     risk_label = Column(String(16), nullable=True)           # 保守/稳健/积极/激进

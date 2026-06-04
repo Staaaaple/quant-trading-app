@@ -18,7 +18,7 @@ const alerts = ref([
 ])
 
 function goBack() {
-  router.push('/')
+  router.push('/portfolio/strategies')
 }
 
 function getLifespanColor(months: number): string {

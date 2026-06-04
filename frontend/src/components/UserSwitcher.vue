@@ -1,65 +1,40 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { userApi, type User } from '@/api/user'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 
-const users = ref<User[]>([])
-const currentUserId = ref<number | null>(null)
 const isOpen = ref(false)
 const showCreateModal = ref(false)
 const showDeleteConfirm = ref(false)
-const userToDelete = ref<User | null>(null)
+const userToDelete = ref<{ id: number; name: string } | null>(null)
 const newUserName = ref('')
-
-const currentUser = computed(() => {
-  return users.value.find(u => u.id === currentUserId.value) || null
-})
-
-async function loadUsers() {
-  try {
-    users.value = await userApi.list()
-    const stored = localStorage.getItem('active_user_id')
-    if (stored) {
-      const id = parseInt(stored)
-      if (users.value.find(u => u.id === id)) {
-        currentUserId.value = id
-      } else if (users.value.length > 0) {
-        currentUserId.value = users.value[0].id
-      }
-    } else if (users.value.length > 0) {
-      currentUserId.value = users.value[0].id
-    }
-  } catch (e) {
-    console.error('Failed to load users:', e)
-  }
-}
+const nameInput = ref<HTMLInputElement | null>(null)
 
 function switchUser(userId: number) {
-  currentUserId.value = userId
-  localStorage.setItem('active_user_id', String(userId))
+  userStore.switchUser(userId)
   isOpen.value = false
+  // 刷新页面以加载新用户的数据
   window.location.reload()
 }
 
 async function createUser() {
   if (!newUserName.value.trim()) return
-  try {
-    const user = await userApi.create({ name: newUserName.value.trim() })
-    users.value.push(user)
-    switchUser(user.id)
+  const user = await userStore.createUser(newUserName.value.trim())
+  if (user) {
     newUserName.value = ''
     showCreateModal.value = false
-    // 新用户跳转到开始界面
-    router.push('/profile')
-  } catch (e) {
-    console.error('Failed to create user:', e)
+    // 新用户跳转到首页（开始画像流程）
+    router.push('/')
+    window.location.reload()
+  } else {
     alert('创建用户失败')
   }
 }
 
-function confirmDelete(user: User) {
+function confirmDelete(user: { id: number; name: string }) {
   userToDelete.value = user
   showDeleteConfirm.value = true
   isOpen.value = false
@@ -67,22 +42,12 @@ function confirmDelete(user: User) {
 
 async function deleteUser() {
   if (!userToDelete.value) return
-  try {
-    await userApi.delete(userToDelete.value.id)
-    users.value = users.value.filter(u => u.id !== userToDelete.value!.id)
-    // 如果删除的是当前用户，切换到第一个可用用户
-    if (currentUserId.value === userToDelete.value.id) {
-      if (users.value.length > 0) {
-        switchUser(users.value[0].id)
-      } else {
-        currentUserId.value = null
-        localStorage.removeItem('active_user_id')
-      }
-    }
+  const ok = await userStore.deleteUser(userToDelete.value.id)
+  if (ok) {
     showDeleteConfirm.value = false
     userToDelete.value = null
-  } catch (e) {
-    console.error('Failed to delete user:', e)
+    window.location.reload()
+  } else {
     alert('删除用户失败')
   }
 }
@@ -91,8 +56,15 @@ function getInitials(name: string) {
   return name.charAt(0).toUpperCase()
 }
 
+function openCreateModal() {
+  showCreateModal.value = true
+  isOpen.value = false
+  // 聚焦输入框
+  setTimeout(() => nameInput.value?.focus(), 100)
+}
+
 onMounted(() => {
-  loadUsers()
+  userStore.loadUsers()
 })
 </script>
 
@@ -100,10 +72,11 @@ onMounted(() => {
   <div class="user-switcher">
     <!-- 当前用户头像 -->
     <button class="avatar-btn" @click="isOpen = !isOpen">
-      <div v-if="currentUser" class="avatar">
-        {{ getInitials(currentUser.name) }}
+      <div v-if="userStore.currentUser" class="avatar">
+        {{ getInitials(userStore.currentUser.name) }}
       </div>
       <div v-else class="avatar avatar--empty">?</div>
+      <span v-if="userStore.currentUser" class="user-name">{{ userStore.currentUser.name }}</span>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :style="{ transform: isOpen ? 'rotate(180deg)' : '' }">
         <polyline points="6 9 12 15 18 9"/>
       </svg>
@@ -117,19 +90,19 @@ onMounted(() => {
 
       <div class="user-list">
         <div
-          v-for="user in users"
+          v-for="user in userStore.users"
           :key="user.id"
           class="user-item"
-          :class="{ active: user.id === currentUserId }"
+          :class="{ active: user.id === userStore.currentUserId }"
           @click="switchUser(user.id)"
         >
           <div class="user-avatar">{{ getInitials(user.name) }}</div>
           <div class="user-info">
             <div class="user-name">{{ user.name }}</div>
-            <div v-if="user.id === currentUserId" class="user-badge">当前</div>
+            <div v-if="user.id === userStore.currentUserId" class="user-badge">当前</div>
           </div>
           <button
-            v-if="users.length > 1"
+            v-if="userStore.users.length > 1"
             class="delete-btn"
             @click.stop="confirmDelete(user)"
             title="删除用户"
@@ -142,7 +115,7 @@ onMounted(() => {
       </div>
 
       <div class="dropdown-footer">
-        <button class="create-btn" @click="showCreateModal = true; isOpen = false">
+        <button class="create-btn" @click="openCreateModal">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12h14"/>
           </svg>
@@ -192,51 +165,61 @@ onMounted(() => {
 <style scoped>
 .user-switcher {
   position: relative;
+  z-index: 100;
 }
 
 .avatar-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border: none;
-  background: transparent;
+  gap: 8px;
+  padding: 6px 12px 6px 6px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: #fff;
   cursor: pointer;
-  border-radius: 10px;
-  transition: background 0.2s;
+  border-radius: 999px;
+  transition: all 0.2s;
 }
 .avatar-btn:hover {
-  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.15);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
 .avatar {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: #171717;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
+  flex-shrink: 0;
 }
 .avatar--empty {
   background: #e5e5e5;
   color: #a3a3a3;
 }
 
+.user-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #171717;
+}
+
 .dropdown {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: 240px;
+  width: 260px;
   background: #fff;
   border-radius: 16px;
   border: 1px solid rgba(0,0,0,0.06);
   box-shadow: 0 20px 60px rgba(0,0,0,0.12);
   z-index: 200;
   overflow: hidden;
+  pointer-events: auto;
 }
 
 .dropdown-header {
@@ -357,7 +340,7 @@ onMounted(() => {
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 150;
+  z-index: 90;
 }
 
 /* Modal */
