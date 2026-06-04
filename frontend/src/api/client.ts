@@ -1,4 +1,4 @@
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
 
 /** 获取当前用户 ID（从 localStorage，避免 Pinia 未初始化问题） */
 function getCurrentUserId(): number | null {
