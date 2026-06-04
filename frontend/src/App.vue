@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { supportedLocales, type SupportedLocale } from './i18n'
 import { syncApi } from './api/sync'
 import { dnaApi } from './api/dna'
+import UserSwitcher from './components/UserSwitcher.vue'
 
 const route = useRoute()
 const { locale, t } = useI18n()
@@ -111,6 +112,7 @@ onMounted(() => {
     <main class="main">
       <header class="page-header-bar">
         <h1 class="page-header-title">{{ pageTitle }}</h1>
+        <UserSwitcher />
       </header>
       <div class="main-content">
         <RouterView />
@@ -291,6 +293,7 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 var(--space-3xl);
   position: sticky;
   top: 0;

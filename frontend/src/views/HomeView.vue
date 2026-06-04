@@ -23,11 +23,23 @@ async function checkProfile() {
       hasProfile.value = false
       return
     }
-    const user = users[0]
+
+    // 获取当前用户（从 localStorage 或默认第一个）
+    const storedUserId = localStorage.getItem('active_user_id')
+    let user = null
+    if (storedUserId) {
+      user = users.find(u => u.id === parseInt(storedUserId))
+    }
+    if (!user) {
+      user = users[0]
+      localStorage.setItem('active_user_id', String(user.id))
+    }
+
     if (!user) {
       hasProfile.value = false
       return
     }
+
     const p = await profileApi.getByUser(user.id)
     if (p) {
       hasProfile.value = true

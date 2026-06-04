@@ -1,6 +1,4 @@
 {
-  "autoMemoryEnabled": true,
-  "autoMemoryDirectory": ".claude/memory",
   "permissions": {
     "allow": [
       "Bash(npx vue-tsc *)",
@@ -41,7 +39,12 @@
       "Bash(curl -s -D - http://[::1]:5174/)",
       "Bash(curl -v http://localhost:5174/)",
       "Bash(git reset *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(git commit *)",
+      "Bash(./start-all.sh)"
     ]
-  }
+  },
+  "autoMemoryEnabled": true,
+  "autoMemoryDirectory": ".claude/memory"
 }
