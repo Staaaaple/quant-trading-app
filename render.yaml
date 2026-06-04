@@ -1,0 +1,35 @@
+services:
+  # 后端 API 服务
+  - type: web
+    name: quant-trading-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SQLITE_DB_PATH
+        value: /tmp/quant_trading.db
+      - key: BACKEND_CORS_ORIGINS
+        value: '["*"]'
+    healthCheckPath: /health
+
+  # 前端静态站点
+  - type: web
+    name: quant-trading-web
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build-only
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: VITE_API_BASE_URL
+        value: https://quant-trading-api.onrender.com/api/v1
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
