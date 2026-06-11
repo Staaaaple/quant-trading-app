@@ -213,6 +213,10 @@ def get_risk_level_from_profile(profile_vector: dict) -> str:
     time_horizon = profile_vector.get("time_horizon", 0.5)
 
     # 综合评分
+    # time_horizon可能是字符串，需要转换
+    if isinstance(time_horizon, str):
+        th_map = {"short": 0.2, "medium": 0.5, "long": 0.8}
+        time_horizon = th_map.get(time_horizon, 0.5)
     score = risk_tolerance * 0.4 + (1 - loss_aversion) * 0.3 + time_horizon * 0.3
 
     if score < 0.25:

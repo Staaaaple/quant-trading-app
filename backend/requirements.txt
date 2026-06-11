@@ -11,3 +11,10 @@ python-multipart==0.0.17
 pytest==8.3.3
 httpx==0.27.2
 apscheduler==3.11.0
+
+# RAG 依赖
+faiss-cpu>=1.7.4
+sentence-transformers>=2.2.0
+
+# 本地 LLM (Apple Silicon)
+mlx-lm>=0.31.0

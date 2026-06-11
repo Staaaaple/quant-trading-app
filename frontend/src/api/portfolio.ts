@@ -4,6 +4,8 @@ export interface PortfolioDesignPayload {
   profile_vector: Record<string, number>
   market_signal: Record<string, any>
   strategy_pool?: any[]
+  use_rag_gate?: boolean
+  rag_strictness?: string
 }
 
 export interface PortfolioDesignResult {
@@ -23,6 +25,10 @@ export interface PortfolioDesignResult {
       strategy_id: string
       strategy_name: string
       strategy_family: string
+      symbol?: string
+      symbol_name?: string
+      health_score?: number
+      lifespan_months?: number
     }>
     risk_config: {
       stop_loss: number
@@ -55,9 +61,34 @@ export interface PortfolioDesignResult {
     expected_lifespan: string
     health_score: number
   }
+  // RAG specific fields
+  rag_reviews?: Array<{
+    step: string
+    passed: boolean
+    issues: string[]
+    suggestions: string[]
+  }>
+  rag_adjusted?: boolean
+  rag_adjustment_count?: number
 }
 
+/**
+ * Portfolio API - 仅使用RAG版本
+ *
+ * 所有组合设计都通过 /portfolios/design-with-rag 端点，
+ * 启用RAG质量门控确保组合质量。
+ */
 export const portfolioApi = {
+  /**
+   * 设计投资组合（带RAG质检）
+   *
+   * 这是唯一的设计入口，自动启用RAG质量门控。
+   * 非RAG版本已被移除，确保所有组合都经过质检。
+   */
   design: (payload: PortfolioDesignPayload) =>
-    client.post<PortfolioDesignResult>('/portfolios/design', payload).then(r => r.data),
+    client.post<PortfolioDesignResult>('/portfolios/design-with-rag', {
+      ...payload,
+      use_rag_gate: true,  // 强制启用RAG
+      rag_strictness: 'normal',
+    }).then(r => r.data),
 }

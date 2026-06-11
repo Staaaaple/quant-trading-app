@@ -1,5 +1,9 @@
 import contextlib
+import os
 from datetime import datetime
+
+# Fix OpenMP library conflict on macOS
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +16,7 @@ from app.db.base import Base, engine
 from app.db.session import SessionLocal
 import app.models  # noqa: F401 - 确保所有模型注册到 Base.metadata
 from app.services import stock_picker_service, market_signal_service, seed_knowledge_base
+from app.services.lifespan_monitor_service import run_monthly_lifespan_check
 
 scheduler = BackgroundScheduler()
 
@@ -56,6 +61,19 @@ def _run_market_signal_collection(label: str = "Scheduled"):
 def _run_daily_market_signal_job():
     """每日 09:00 自动采集市场信号（覆盖模式）."""
     _run_market_signal_collection(label="Daily09:00")
+
+
+def _run_monthly_lifespan_job():
+    """每月 1 日 03:00 自动执行策略寿命检查."""
+    db = SessionLocal()
+    try:
+        result = run_monthly_lifespan_check(db)
+        print(f"[MonthlyLifespan] 完成: {result['updated']}/{result['total_strategies']} 个策略, "
+              f"黄灯{result['yellow_alerts']}个, 红灯{result['red_alerts']}个")
+    except Exception as e:
+        print(f"[MonthlyLifespan] 执行失败: {e}")
+    finally:
+        db.close()
 
 
 def _ensure_db_columns():
@@ -117,6 +135,13 @@ async def lifespan(app: FastAPI):
             _run_market_signal_collection,
             trigger=CronTrigger(hour=15, minute=0),
             id="daily_market_signal_job_1500",
+            replace_existing=True,
+        )
+        # 每月1日 03:00 策略寿命检查
+        scheduler.add_job(
+            _run_monthly_lifespan_job,
+            trigger=CronTrigger(day=1, hour=3, minute=0),
+            id="monthly_lifespan_check_job",
             replace_existing=True,
         )
         scheduler.start()

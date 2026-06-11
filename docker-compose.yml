@@ -1,0 +1,78 @@
+version: "3.8"
+
+services:
+  # ── Backend API ──
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: quantevo-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistent database
+      - ./backend/data:/app/data
+      - ./backend/logs:/app/logs
+      # Data cache directory
+      - ./backend/data_cache:/app/data_cache
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SQLITE_DB_PATH=/app/data/quant_trading.db
+      - BACKEND_CORS_ORIGINS=["*"]
+      # LLM Configuration (adjust for your server)
+      - LLM_BACKEND=mock
+      - EMBEDDING_BACKEND=mock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - quantevo-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # ── Frontend (Nginx) ──
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: quantevo-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - quantevo-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ── Watchtower (Auto-update containers) ──
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: quantevo-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=3600
+      - WATCHTOWER_INCLUDE_STOPPED=true
+      - WATCHTOWER_REVIVE_STOPPED=true
+    command: --interval 3600 quantevo-backend quantevo-frontend
+    networks:
+      - quantevo-network
+
+networks:
+  quantevo-network:
+    driver: bridge

@@ -57,18 +57,25 @@ def _fetch_from_eastmoney(symbol: str, start: str, end: str) -> pd.DataFrame | N
     return None
 
 
+def _add_exchange_prefix(symbol: str) -> str:
+    """为新浪财经/网易接口补充 sh/sz 前缀."""
+    if symbol.startswith(("sh", "sz")):
+        return symbol
+    if symbol.startswith("6"):
+        return f"sh{symbol}"
+    return f"sz{symbol}"
+
+
 def _fetch_from_sina(symbol: str, start: str, end: str) -> pd.DataFrame | None:
     """新浪接口（备用）."""
     try:
         # 新浪接口格式不同，需要转换
-        df = ak.stock_zh_a_daily(symbol=symbol, start_date=start, end_date=end)
+        start_fmt = f"{start[:4]}-{start[4:6]}-{start[6:]}"
+        end_fmt = f"{end[:4]}-{end[4:6]}-{end[6:]}"
+        sina_symbol = _add_exchange_prefix(symbol)
+        df = ak.stock_zh_a_daily(symbol=sina_symbol, start_date=start_fmt, end_date=end_fmt)
         if df is not None and not df.empty:
-            # 标准化列名
-            col_map = {
-                "date": "日期", "open": "开盘", "close": "收盘",
-                "high": "最高", "low": "最低", "volume": "成交量",
-            }
-            df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+            # 新浪返回英文列名，与 get_ohlcv 下游标准化保持一致
             return df
     except Exception as e:
         print(f"[DataCache] Sina failed for {symbol}: {e}")
@@ -76,18 +83,15 @@ def _fetch_from_sina(symbol: str, start: str, end: str) -> pd.DataFrame | None:
 
 
 def _fetch_from_tencent(symbol: str, start: str, end: str) -> pd.DataFrame | None:
-    """腾讯接口（备用）."""
-    try:
-        df = ak.stock_zh_a_hist_tx(symbol=symbol, start_date=start, end_date=end)
-        if df is not None and not df.empty:
-            col_map = {
-                "日期": "日期", "开盘": "开盘", "收盘": "收盘",
-                "最高": "最高", "最低": "最低", "成交量": "成交量",
-            }
-            df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
-            return df
-    except Exception as e:
-        print(f"[DataCache] Tencent failed for {symbol}: {e}")
+    """腾讯接口（已失效，保留函数签名避免外部调用报错）."""
+    # ak.stock_zh_a_hist_tx 当前返回 ValueError: invalid literal for int() with base 10: 'i'
+    # 直接返回 None 避免无效请求和错误日志刷屏
+    return None
+
+
+def _fetch_etf_from_cache_or_placeholder(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """ETF历史数据占位（当前akshare无可用免费ETF历史接口）."""
+    print(f"[DataCache] ETF historical data ({symbol}) is not available via akshare currently")
     return None
 
 
@@ -97,13 +101,10 @@ def _fetch_from_163(symbol: str, start: str, end: str) -> pd.DataFrame | None:
         # 网易接口需要转换日期格式
         start_fmt = f"{start[:4]}-{start[4:6]}-{start[6:]}"
         end_fmt = f"{end[:4]}-{end[4:6]}-{end[6:]}"
-        df = ak.stock_zh_a_daily(symbol=symbol, start_date=start_fmt, end_date=end_fmt)
+        netease_symbol = _add_exchange_prefix(symbol)
+        df = ak.stock_zh_a_daily(symbol=netease_symbol, start_date=start_fmt, end_date=end_fmt)
         if df is not None and not df.empty:
-            col_map = {
-                "date": "日期", "open": "开盘", "close": "收盘",
-                "high": "最高", "low": "最低", "volume": "成交量",
-            }
-            df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+            # 网易/新浪返回英文列名，与 get_ohlcv 下游标准化保持一致
             return df
     except Exception as e:
         print(f"[DataCache] 163 failed for {symbol}: {e}")
@@ -112,12 +113,11 @@ def _fetch_from_163(symbol: str, start: str, end: str) -> pd.DataFrame | None:
 
 def fetch_ohlcv_with_fallback(symbol: str, start: str, end: str) -> pd.DataFrame | None:
     """带备用接口的数据获取."""
-    # 尝试多个接口（按推荐优先级排序）
+    # 尝试多个接口（按当前可用性排序）
     sources = [
-        ("tencent", _fetch_from_tencent),      # 腾讯接口访问无限制
-        ("eastmoney", _fetch_from_eastmoney),  # 东财数据质量高但有限制
-        ("sina", _fetch_from_sina),            # 新浪备用
-        ("163", _fetch_from_163),              # 网易备用
+        ("sina", _fetch_from_sina),            # 新浪当前可用
+        ("163", _fetch_from_163),              # 网易备用（同新浪接口）
+        ("eastmoney", _fetch_from_eastmoney),  # 东财数据质量高但当前被封
     ]
 
     for source_name, fetch_func in sources:

@@ -2,8 +2,8 @@
 
 支持数据源:
 - akshare stock_zh_a_daily (新浪) — 当前可用
-- akshare stock_zh_a_hist_tx (腾讯) — 备用
 - akshare stock_zh_a_hist (东方财富) — 当前被封
+- ~~akshare stock_zh_a_hist_tx (腾讯) — 已失效~~
 
 统一输出格式: DataFrame with columns [date, open, high, low, close, volume]
 """
@@ -30,30 +30,38 @@ EXCHANGE_MAP = {
     "600887": "sh600887",  # 伊利股份
 }
 
+
+def _add_exchange_prefix(symbol: str) -> str:
+    """为需要交易所前缀的接口补充 sh/sz."""
+    if symbol.startswith(("sh", "sz")):
+        return symbol
+    if symbol.startswith("6"):
+        return f"sh{symbol}"
+    return f"sz{symbol}"
+
+
 # ── 新浪接口获取 ──
 
 def fetch_from_sina(symbol: str, start: str, end: str) -> pd.DataFrame | None:
     """新浪接口获取股票数据.
 
     Args:
-        symbol: 6位数字代码如 '600519'
-        start: YYYYMMDD
-        end: YYYYMMDD
+        symbol: 6位数字代码如 '600519'，或已带 sh/sz 前缀
+        start: YYYYMMDD 或 YYYY-MM-DD
+        end: YYYYMMDD 或 YYYY-MM-DD
     """
-    sina_symbol = EXCHANGE_MAP.get(symbol)
-    if not sina_symbol:
-        # 自动判断交易所
-        if symbol.startswith("6"):
-            sina_symbol = f"sh{symbol}"
-        else:
-            sina_symbol = f"sz{symbol}"
+    sina_symbol = EXCHANGE_MAP.get(symbol, _add_exchange_prefix(symbol))
+
+    # 新浪需要 YYYY-MM-DD
+    start_fmt = start if "-" in start else f"{start[:4]}-{start[4:6]}-{start[6:]}"
+    end_fmt = end if "-" in end else f"{end[:4]}-{end[4:6]}-{end[6:]}"
 
     try:
-        df = ak.stock_zh_a_daily(symbol=sina_symbol, start_date=start, end_date=end)
+        df = ak.stock_zh_a_daily(symbol=sina_symbol, start_date=start_fmt, end_date=end_fmt)
         if df is None or df.empty:
             return None
 
-        # 标准化列名
+        # 新浪返回英文列名，标准化确保一致
         col_map = {
             "date": "date",
             "open": "open",
@@ -75,23 +83,20 @@ def fetch_from_sina(symbol: str, start: str, end: str) -> pd.DataFrame | None:
         return None
 
 
-# ── 腾讯接口获取 ──
+# ── 东方财富接口获取（当前大概率失效，保留作未来恢复） ──
 
-def fetch_from_tencent(symbol: str, start: str, end: str) -> pd.DataFrame | None:
-    """腾讯接口获取股票数据."""
-    tx_symbol = EXCHANGE_MAP.get(symbol)
-    if not tx_symbol:
-        if symbol.startswith("6"):
-            tx_symbol = f"sh{symbol}"
-        else:
-            tx_symbol = f"sz{symbol}"
-
+def fetch_from_eastmoney(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """东方财富接口获取股票数据（当前被封，保留接口）."""
     try:
-        df = ak.stock_zh_a_hist_tx(symbol=tx_symbol, start_date=start, end_date=end)
+        time.sleep(5)  # 5秒间隔，降低被封概率
+        start_fmt = start.replace("-", "")
+        end_fmt = end.replace("-", "")
+        df = ak.stock_zh_a_hist(
+            symbol=symbol, period="daily", start_date=start_fmt, end_date=end_fmt, adjust="qfq"
+        )
         if df is None or df.empty:
             return None
 
-        # 腾讯接口列名
         col_map = {
             "日期": "date",
             "开盘": "open",
@@ -102,10 +107,9 @@ def fetch_from_tencent(symbol: str, start: str, end: str) -> pd.DataFrame | None
         }
         df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
         df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-
         return df[["date", "open", "high", "low", "close", "volume"]]
     except Exception as e:
-        print(f"[DataFetcher] Tencent failed for {symbol}: {e}")
+        print(f"[DataFetcher] Eastmoney failed for {symbol}: {e}")
         return None
 
 
@@ -115,21 +119,21 @@ def fetch_stock_data(symbol: str, start: str, end: str) -> pd.DataFrame | None:
     """获取股票数据（自动选择可用接口）.
 
     Args:
-        symbol: 6位股票代码
-        start: 开始日期 YYYYMMDD
-        end: 结束日期 YYYYMMDD
+        symbol: 6位股票代码或带前缀代码
+        start: 开始日期 YYYYMMDD 或 YYYY-MM-DD
+        end: 结束日期 YYYYMMDD 或 YYYY-MM-DD
 
     Returns:
         DataFrame with [date, open, high, low, close, volume]
     """
-    # 优先新浪
+    # 优先新浪（当前可用）
     df = fetch_from_sina(symbol, start, end)
     if df is not None and not df.empty:
         return df
 
-    # 新浪失败用腾讯
-    time.sleep(2)  # 间隔避免限流
-    df = fetch_from_tencent(symbol, start, end)
+    # 新浪失败尝试东财（大概率失效，但保留）
+    time.sleep(2)
+    df = fetch_from_eastmoney(symbol, start, end)
     if df is not None and not df.empty:
         return df
 

@@ -19,6 +19,7 @@ from app.services.backtest_service import (
     AkshareProxyError,
     AkshareDataError,
 )
+from app.services.data_cache import get_ohlcv as cache_get_ohlcv
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -39,18 +40,22 @@ ASSET_TYPES = {
 # ═══════════════════════════════════════════════════════════════
 
 def fetch_etf_data(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """获取ETF历史数据."""
+    """获取ETF历史数据（优先读缓存，当前akshare无可用免费ETF历史接口）."""
     try:
-        df = ak.fund_etf_hist_em(
-            symbol=symbol,
-            period="daily",
-            start_date=start_date.replace("-", ""),
-            end_date=end_date.replace("-", ""),
-            adjust="qfq",
+        # 优先尝试本地缓存
+        start_fmt = start_date.replace("-", "")
+        end_fmt = end_date.replace("-", "")
+        df = cache_get_ohlcv(symbol, start_fmt, end_fmt)
+        if df is not None and not df.empty:
+            return _normalize_akquant_df(df, symbol)
+
+        # 当前akshare ETF历史接口 fund_etf_hist_em 已被封
+        raise AkshareDataError(
+            f"ETF {symbol} 历史数据当前无法通过akshare获取，"
+            f"请先通过其他方式将数据写入data_cache缓存"
         )
-        if df.empty:
-            raise ValueError(f"ETF {symbol} 无数据")
-        return _normalize_akquant_df(df, symbol)
+    except AkshareDataError:
+        raise
     except Exception as e:
         raise AkshareDataError(f"获取ETF数据失败: {e}")
 
@@ -80,20 +85,24 @@ def fetch_fund_data(symbol: str, start_date: str, end_date: str) -> pd.DataFrame
 
 
 def fetch_bond_data(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """获取债券历史数据."""
+    """获取债券历史数据（使用中美债券利率接口）."""
     try:
-        # 国债收益率数据
-        df = ak.bond_zh_yield(
-            start_date=start_date.replace("-", ""),
-            end_date=end_date.replace("-", ""),
-        )
-        if df.empty:
+        # bond_zh_yield 接口已不存在，改用 bond_zh_us_rate 取中国10年期国债收益率
+        df = ak.bond_zh_us_rate()
+        if df is None or df.empty:
             raise ValueError(f"债券 {symbol} 无数据")
-        # 标准化
+
+        # 取中国国债收益率10年作为债券代理价格
         df = df.rename(columns={
             "日期": "date",
-            "收益率": "close",
+            "中国国债收益率10年": "close",
         })
+        df["date"] = pd.to_datetime(df["date"])
+        # 按日期范围过滤
+        df = df[(df["date"] >= start_date) & (df["date"] <= end_date)].copy()
+        if df.empty:
+            raise ValueError(f"债券 {symbol} 在指定日期范围无数据")
+
         df["open"] = df["close"]
         df["high"] = df["close"]
         df["low"] = df["close"]

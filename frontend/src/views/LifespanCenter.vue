@@ -1,21 +1,70 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { getLifespanAlerts } from '@/api/fullchain'
 
 const router = useRouter()
 
-// Mock data - will be replaced with API call
-const strategies = ref([
-  { id: 's1', name: '沪深300ETF低波动动量', family: '动量策略', lifespan: 18, health: 85, status: 'healthy' },
-  { id: 's2', name: '中证500机器学习多因子', family: '多因子', lifespan: 12, health: 72, status: 'healthy' },
-  { id: 's3', name: '黄金ETF趋势跟踪', family: '趋势跟踪', lifespan: 2, health: 45, status: 'warning' },
-  { id: 's4', name: '国债ETF利率趋势', family: '利率策略', lifespan: 24, health: 90, status: 'healthy' },
-  { id: 's5', name: '可转债ETF低波动筛选', family: '低波动', lifespan: 20, health: 78, status: 'healthy' },
-])
+// ── 从 sessionStorage 或 API 获取数据 ──
+const strategies = ref<any[]>([])
+const alerts = ref<any[]>([])
+const loading = ref(true)
+const error = ref('')
 
-const alerts = ref([
-  { type: 'warning', message: '黄金ETF策略寿命仅剩2个月', action: '查看替代' },
-])
+// 从组合数据中提取策略
+function loadStrategiesFromPortfolio() {
+  const stored = sessionStorage.getItem('latest_portfolio')
+  if (!stored) return false
+
+  try {
+    const portfolio = JSON.parse(stored)
+    const bindings = portfolio?.portfolio?.bindings || []
+
+    strategies.value = bindings.map((b: any, idx: number) => {
+      const lifespan = b.lifespan_months || (12 - idx * 2)
+      const health = b.health_score || Math.min(95, 85 - idx * 5)
+      return {
+        id: b.strategy_id || `s${idx}`,
+        name: b.strategy_name || b.name || `策略${idx + 1}`,
+        family: b.strategy_family || '未分类',
+        lifespan: lifespan,
+        health: Math.round(health),
+        status: lifespan < 3 ? 'critical' : lifespan < 6 ? 'warning' : 'healthy',
+        symbol: b.symbol,
+        weight: b.weight,
+      }
+    })
+
+    return strategies.value.length > 0
+  } catch (e) {
+    console.error('Failed to parse portfolio:', e)
+    return false
+  }
+}
+
+// 加载预警
+async function loadAlerts() {
+  try {
+    const result = await getLifespanAlerts()
+    if (result?.data) {
+      const data = result.data as { red?: any[], yellow?: any[] }
+      alerts.value = [
+        ...(data.red || []).map((a: any) => ({
+          type: 'critical',
+          message: `🔴 ${a.strategy_id}: ${a.alert_reason}`,
+          action: '查看替代',
+        })),
+        ...(data.yellow || []).map((a: any) => ({
+          type: 'warning',
+          message: `🟡 ${a.strategy_id}: ${a.alert_reason}`,
+          action: '关注',
+        })),
+      ]
+    }
+  } catch (e) {
+    console.error('Failed to load alerts:', e)
+  }
+}
 
 function goBack() {
   router.push('/portfolio/strategies')
@@ -42,8 +91,31 @@ function getStatusClass(status: string): string {
   return map[status] || 'status-healthy'
 }
 
-onMounted(() => {
-  // TODO: Load from API
+// 组合层面统计
+const portfolioStats = computed(() => {
+  if (strategies.value.length === 0) return null
+  const minLifespan = Math.min(...strategies.value.map(s => s.lifespan))
+  const avgHealth = Math.round(
+    strategies.value.reduce((sum, s) => sum + s.health, 0) / strategies.value.length
+  )
+  const warningCount = strategies.value.filter(s => s.lifespan < 6).length
+
+  return {
+    minLifespan,
+    avgHealth,
+    warningCount,
+    totalCount: strategies.value.length,
+  }
+})
+
+onMounted(async () => {
+  const hasData = loadStrategiesFromPortfolio()
+  if (hasData) {
+    await loadAlerts()
+  } else {
+    error.value = '暂无策略数据，请先生成组合'
+  }
+  loading.value = false
 })
 </script>
 
@@ -68,67 +140,100 @@ onMounted(() => {
 
     <!-- Content -->
     <div class="lifespan-content">
-      <!-- Alerts -->
-      <div v-for="(alert, idx) in alerts" :key="idx" class="alert-box">
-        <span class="alert-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
-        </span>
-        <span class="alert-txt">{{ alert.message }}</span>
-        <span class="alert-link">{{ alert.action }}</span>
+      <!-- Loading -->
+      <div v-if="loading" class="loading-state">加载中...</div>
+
+      <!-- Error -->
+      <div v-else-if="error" class="error-state">
+        <p>{{ error }}</p>
+        <button class="btn-primary" @click="goBack">返回</button>
       </div>
 
-      <!-- Strategy List -->
-      <div class="section-title">
-        <span class="section-label">STRATEGIES</span>
-        <span class="section-count">{{ strategies.length }} 个策略</span>
-      </div>
-
-      <div class="strategy-list">
-        <div v-for="s in strategies" :key="s.id" class="strategy-card">
-          <div class="strategy-header">
-            <div class="strategy-info">
-              <div class="strategy-name">{{ s.name }}</div>
-              <div class="strategy-family">{{ s.family }}</div>
-            </div>
-            <span :class="['status-badge', getStatusClass(s.status)]">
-              {{ s.status === 'healthy' ? '健康' : s.status === 'warning' ? '预警' : '危急' }}
+      <template v-else>
+        <!-- Portfolio Stats -->
+        <div v-if="portfolioStats" class="stats-banner">
+          <div class="stat-item">
+            <span class="stat-label">组合寿命</span>
+            <span class="stat-val" :style="{ color: getLifespanColor(portfolioStats.minLifespan) }">
+              {{ portfolioStats.minLifespan }}月
             </span>
           </div>
+          <div class="stat-item">
+            <span class="stat-label">平均健康度</span>
+            <span class="stat-val" :style="{ color: getHealthColor(portfolioStats.avgHealth) }">
+              {{ portfolioStats.avgHealth }}
+            </span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">预警策略</span>
+            <span class="stat-val" :class="portfolioStats.warningCount > 0 ? 'text-warning' : 'text-healthy'">
+              {{ portfolioStats.warningCount }}个
+            </span>
+          </div>
+        </div>
 
-          <div class="strategy-metrics">
-            <div class="metric">
-              <div class="metric-label">剩余寿命</div>
-              <div class="metric-bar">
-                <div class="metric-fill" :style="{ width: `${Math.min(s.lifespan / 24 * 100, 100)}%`, background: getLifespanColor(s.lifespan) }"></div>
+        <!-- Alerts -->
+        <div v-for="(alert, idx) in alerts" :key="idx" class="alert-box" :class="`alert-${alert.type}`">
+          <span class="alert-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+          </span>
+          <span class="alert-txt">{{ alert.message }}</span>
+          <span class="alert-link">{{ alert.action }}</span>
+        </div>
+
+        <!-- Strategy List -->
+        <div class="section-title">
+          <span class="section-label">STRATEGIES</span>
+          <span class="section-count">{{ strategies.length }} 个策略</span>
+        </div>
+
+        <div class="strategy-list">
+          <div v-for="s in strategies" :key="s.id" class="strategy-card">
+            <div class="strategy-header">
+              <div class="strategy-info">
+                <div class="strategy-name">{{ s.name }}</div>
+                <div class="strategy-family">{{ s.family }} · {{ s.symbol }}</div>
               </div>
-              <div class="metric-val" :style="{ color: getLifespanColor(s.lifespan) }">{{ s.lifespan }}月</div>
+              <span :class="['status-badge', getStatusClass(s.status)]">
+                {{ s.status === 'healthy' ? '健康' : s.status === 'warning' ? '预警' : '危急' }}
+              </span>
             </div>
-            <div class="metric">
-              <div class="metric-label">健康度</div>
-              <div class="metric-bar">
-                <div class="metric-fill" :style="{ width: `${s.health}%`, background: getHealthColor(s.health) }"></div>
+
+            <div class="strategy-metrics">
+              <div class="metric">
+                <div class="metric-label">剩余寿命</div>
+                <div class="metric-bar">
+                  <div class="metric-fill" :style="{ width: `${Math.min(s.lifespan / 24 * 100, 100)}%`, background: getLifespanColor(s.lifespan) }"></div>
+                </div>
+                <div class="metric-val" :style="{ color: getLifespanColor(s.lifespan) }">{{ s.lifespan }}月</div>
               </div>
-              <div class="metric-val" :style="{ color: getHealthColor(s.health) }">{{ s.health }}</div>
+              <div class="metric">
+                <div class="metric-label">健康度</div>
+                <div class="metric-bar">
+                  <div class="metric-fill" :style="{ width: `${s.health}%`, background: getHealthColor(s.health) }"></div>
+                </div>
+                <div class="metric-val" :style="{ color: getHealthColor(s.health) }">{{ s.health }}</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Legend -->
-      <div class="legend-bar">
-        <div class="legend-item">
-          <span class="legend-dot" style="background:#22c55e"></span>
-          <span>健康 (≥12月)</span>
+        <!-- Legend -->
+        <div class="legend-bar">
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#22c55e"></span>
+            <span>健康 (≥12月)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#d97706"></span>
+            <span>预警 (6-12月)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#ef4444"></span>
+            <span>危急 (&lt;6月)</span>
+          </div>
         </div>
-        <div class="legend-item">
-          <span class="legend-dot" style="background:#d97706"></span>
-          <span>预警 (6-12月)</span>
-        </div>
-        <div class="legend-item">
-          <span class="legend-dot" style="background:#ef4444"></span>
-          <span>危急 (<6月)</span>
-        </div>
-      </div>
+      </template>
     </div>
   </div>
 </template>
@@ -184,6 +289,25 @@ onMounted(() => {
   width: 100%; display: flex; flex-direction: column; gap: 14px;
   position: relative; z-index: 1;
 }
+.loading-state, .error-state {
+  text-align: center; padding: 60px 20px; color: #a3a3a3;
+}
+.error-state p { margin-bottom: 20px; }
+
+/* Stats Banner */
+.stats-banner {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.stat-item {
+  text-align: center; padding: 16px 12px;
+  background: #fff; border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.05);
+}
+.stat-label { font-size: 0.68rem; color: #a3a3a3; display: block; margin-bottom: 6px; }
+.stat-val { font-size: 1.1rem; font-weight: 700; }
+.text-healthy { color: #22c55e; }
+.text-warning { color: #d97706; }
 
 /* Alert */
 .alert-box {
@@ -198,6 +322,7 @@ onMounted(() => {
   content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
   background: #ef4444; border-radius: 12px 0 0 12px;
 }
+.alert-box.alert-warning::before { background: #d97706; }
 .alert-icon { color: #ef4444; display: flex; align-items: center; margin-left: 6px; }
 .alert-txt { font-size: 0.8rem; color: #525252; flex: 1; font-weight: 500; }
 .alert-link {

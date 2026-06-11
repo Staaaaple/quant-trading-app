@@ -13,6 +13,13 @@ export default defineConfig({
   server: {
     port: 3000,
     strictPort: true,
+    // 本地开发时代理 API 请求到后端
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
   },
   resolve: {
     alias: {

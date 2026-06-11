@@ -34,6 +34,13 @@ from app.services.rebalance_service import (
     generate_rebalance_plan,
 )
 from app.services.weekly_report import generate_weekly_report
+from app.services.lifespan_monitor_service import (
+    run_monthly_lifespan_check,
+    get_lifespan_trend,
+    get_active_alerts,
+    get_portfolio_lifespan_status,
+    recommend_replacement_strategies,
+)
 
 router = APIRouter()
 
@@ -229,7 +236,7 @@ def check_rebalance(
         "portfolio": {组合配置},
         "market_signal": {市场信号},
         "lifespan_data": {寿命数据},
-        "last_rebalance_date": "2026-05-01"
+        "last_rebalance_date": "YYYY-MM-DD"  // 上次调仓日期
     }
     """
     try:
@@ -363,3 +370,78 @@ def get_latest_weekly_report(
         "data": None,
         "message": "功能开发中，请使用 POST /weekly-report/generate 生成周报",
     }
+
+
+# ── 寿命监控 ──
+
+@router.post("/lifespan/run-check", response_model=dict[str, Any])
+def trigger_lifespan_check(
+    db: Session = Depends(get_db),
+):
+    """手动触发策略寿命检查（管理员用）."""
+    try:
+        result = run_monthly_lifespan_check(db)
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"寿命检查失败: {e}")
+
+
+@router.get("/lifespan/trend/{strategy_id}", response_model=dict[str, Any])
+def get_strategy_lifespan_trend(
+    strategy_id: str,
+    months: int = 6,
+    db: Session = Depends(get_db),
+):
+    """获取策略寿命趋势."""
+    try:
+        trend = get_lifespan_trend(db, strategy_id, months)
+        return {"success": True, "data": trend}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取寿命趋势失败: {e}")
+
+
+@router.get("/lifespan/alerts", response_model=dict[str, Any])
+def get_lifespan_alerts(
+    db: Session = Depends(get_db),
+):
+    """获取当前活跃预警."""
+    try:
+        alerts = get_active_alerts(db)
+        return {"success": True, "data": alerts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取预警失败: {e}")
+
+
+@router.get("/lifespan/portfolio/{portfolio_id}", response_model=dict[str, Any])
+def get_portfolio_lifespan(
+    portfolio_id: str,
+    db: Session = Depends(get_db),
+):
+    """获取组合寿命状态."""
+    try:
+        status = get_portfolio_lifespan_status(db, portfolio_id)
+        return {"success": True, "data": status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取组合寿命失败: {e}")
+
+
+@router.post("/lifespan/replacement", response_model=dict[str, Any])
+def get_replacement_strategies(
+    payload: dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    """获取替代策略推荐.
+
+    Payload:
+    {
+        "strategy_id": "strategy_001",
+        "top_k": 3
+    }
+    """
+    try:
+        strategy_id = payload.get("strategy_id", "")
+        top_k = payload.get("top_k", 3)
+        recommendations = recommend_replacement_strategies(db, strategy_id, top_k)
+        return {"success": True, "data": recommendations}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取替代策略失败: {e}")

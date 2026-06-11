@@ -1,58 +1,92 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { portfolioApi, type PortfolioDesignResult } from '@/api/portfolio'
 
 const router = useRouter()
 
-// ── 模拟资产配置数据（后端未做，前端占位）──
-// 系统推荐的具体持仓组合
-const assetAllocation = ref([
-  {
-    id: 'stock',
-    name: '股票',
-    pct: 45,
-    color: '#171717',
-    desc: 'A股核心资产+行业龙头',
-    // 系统推荐的具体持仓组合
-    holdings: [
-      { name: '宁德时代', code: '300750', weight: 50, reason: '新能源龙头，动力电池全球第一' },
-      { name: '机器人ETF', code: '562360', weight: 30, reason: '人形机器人赛道，政策+产业双驱动' },
-      { name: '工业富联', code: '601138', weight: 20, reason: 'AI服务器代工，算力基建核心标的' },
-    ],
-  },
-  {
-    id: 'bond',
-    name: '债券',
-    pct: 30,
-    color: '#525252',
-    desc: '国债+高等级信用债',
-    holdings: [
-      { name: '24国债05', code: '019742', weight: 60, reason: '10年期国债，票息2.5%，避险首选' },
-      { name: '易方达纯债A', code: '110037', weight: 40, reason: '老牌债基，年化4.2%，波动极低' },
-    ],
-  },
-  {
-    id: 'commodity',
-    name: '商品',
-    pct: 15,
-    color: '#a3a3a3',
-    desc: '黄金+大宗商品',
-    holdings: [
-      { name: '黄金ETF', code: '518880', weight: 70, reason: '地缘冲突+降息预期，黄金避险需求上升' },
-      { name: '豆粕ETF', code: '159985', weight: 30, reason: '农产品通胀对冲，南美干旱支撑价格' },
-    ],
-  },
-  {
-    id: 'cash',
-    name: '现金',
-    pct: 10,
-    color: '#d4d4d4',
-    desc: '货币基金+活期存款',
-    holdings: [
-      { name: '天弘余额宝', code: '000198', weight: 100, reason: 'T+0赎回，年化1.8%，流动性最佳' },
-    ],
-  },
-])
+// ── 从 sessionStorage 或 API 获取组合数据 ──
+const portfolioData = ref<PortfolioDesignResult | null>(null)
+const loading = ref(true)
+const error = ref('')
+
+// 获取 SAA 权重（真实数据）
+const saaWeights = computed(() => {
+  return portfolioData.value?.portfolio?.saa?.weights || {
+    stock: 0.45,
+    bond: 0.35,
+    commodity: 0.12,
+    cash: 0.08,
+  }
+})
+
+// 构建资产配置数据（从后端 SAA 权重 + bindings）
+const assetAllocation = computed(() => {
+  const weights = saaWeights.value
+  const bindings = portfolioData.value?.portfolio?.bindings || []
+
+  // 按资产类别分组 holdings
+  const holdingsByAsset: Record<string, Array<{name: string, code: string, weight: number, reason: string}>> = {
+    stock: [],
+    bond: [],
+    commodity: [],
+    cash: [],
+  }
+
+  bindings.forEach((b: any) => {
+    const assetClass = b.asset_class?.toLowerCase() || 'stock'
+    const target = holdingsByAsset[assetClass] || holdingsByAsset.stock
+    target.push({
+      name: b.name || b.symbol,
+      code: b.symbol,
+      weight: Math.round((b.weight || 0) * 100),
+      reason: b.reasoning || b.data_source || '策略绑定',
+    })
+  })
+
+  // 如果没有 bindings，使用默认配置
+  if (bindings.length === 0) {
+    holdingsByAsset.stock = [{ name: '沪深300ETF', code: '510300', weight: 100, reason: '核心宽基指数' }]
+    holdingsByAsset.bond = [{ name: '国债ETF', code: '511010', weight: 100, reason: '无信用风险' }]
+    holdingsByAsset.commodity = [{ name: '黄金ETF', code: '518880', weight: 100, reason: '避险资产' }]
+    holdingsByAsset.cash = [{ name: '银华日利', code: '511880', weight: 100, reason: '场内货币基金' }]
+  }
+
+  return [
+    {
+      id: 'stock',
+      name: '股票',
+      pct: Math.round((weights.stock || 0) * 100),
+      color: '#171717',
+      desc: 'A股核心资产+行业龙头',
+      holdings: holdingsByAsset.stock,
+    },
+    {
+      id: 'bond',
+      name: '债券',
+      pct: Math.round((weights.bond || 0) * 100),
+      color: '#525252',
+      desc: '国债+高等级信用债',
+      holdings: holdingsByAsset.bond,
+    },
+    {
+      id: 'commodity',
+      name: '商品',
+      pct: Math.round((weights.commodity || 0) * 100),
+      color: '#a3a3a3',
+      desc: '黄金+大宗商品',
+      holdings: holdingsByAsset.commodity,
+    },
+    {
+      id: 'cash',
+      name: '现金',
+      pct: Math.round((weights.cash || 0) * 100),
+      color: '#d4d4d4',
+      desc: '货币基金+活期存款',
+      holdings: holdingsByAsset.cash,
+    },
+  ]
+})
 
 // ── 展开状态 ──
 const expandedAsset = ref<string | null>(null)
@@ -76,7 +110,7 @@ function closeBuyGuide() {
 }
 
 function goBack() {
-  router.push('/market')
+  router.push('/')
 }
 
 function goNext() {
@@ -100,6 +134,48 @@ const donutSegments = computed(() => {
 })
 
 const totalPct = computed(() => assetAllocation.value.reduce((s, a) => s + a.pct, 0))
+
+// ── 风控配置 ──
+const riskConfig = computed(() => {
+  return portfolioData.value?.portfolio?.risk_config || {
+    stop_loss: 0.08,
+    max_position: 0.20,
+    max_drawdown: 0.15,
+    rebalance_threshold: 0.05,
+  }
+})
+
+// ── 可靠性 ──
+const reliability = computed(() => {
+  return portfolioData.value?.portfolio?.reliability || {
+    confidence: 0.6,
+    reliability_level: '中',
+  }
+})
+
+// ── 组合寿命 ──
+const portfolioLifespan = computed(() => {
+  return portfolioData.value?.portfolio?.portfolio_lifespan || 12
+})
+
+// ── 加载数据 ──
+onMounted(() => {
+  // 尝试从 sessionStorage 读取
+  const stored = sessionStorage.getItem('latest_portfolio')
+  if (stored) {
+    try {
+      portfolioData.value = JSON.parse(stored)
+      loading.value = false
+      return
+    } catch (e) {
+      console.error('Failed to parse stored portfolio:', e)
+    }
+  }
+
+  // 如果没有存储的数据，显示加载状态并提示用户返回首页生成组合
+  loading.value = false
+  error.value = '暂无组合数据，请返回首页生成组合'
+})
 </script>
 
 <template>
@@ -123,147 +199,201 @@ const totalPct = computed(() => assetAllocation.value.reduce((s, a) => s + a.pct
 
     <!-- Content -->
     <div class="portfolio-content">
-      <!-- Allocation Chart -->
-      <div class="alloc-card">
-        <div class="alloc-header">
-          <span class="alloc-label">资产配置</span>
-          <span class="alloc-sub">基于当前经济周期深度衰退调整</span>
-        </div>
+      <!-- Loading -->
+      <div v-if="loading" class="loading-state">加载组合数据中...</div>
 
-        <div class="donut-wrap">
-          <svg viewBox="0 0 120 120" class="donut-svg">
-            <circle cx="60" cy="60" r="46" fill="none" stroke="#f0f0f0" stroke-width="12"/>
-            <circle
-              v-for="seg in donutSegments"
-              :key="seg.id"
-              cx="60" cy="60" r="46" fill="none"
-              :stroke="seg.color"
-              stroke-width="12" stroke-linecap="round"
-              :stroke-dasharray="`${seg.dash} 289`"
-              :stroke-dashoffset="seg.offset"
-              transform="rotate(-90 60 60)"
-            />
-          </svg>
-          <div class="donut-center">
-            <div class="donut-total">{{ totalPct }}%</div>
-            <div class="donut-total-label">总配置</div>
-          </div>
-        </div>
-
-        <!-- Legend -->
-        <div class="alloc-legend">
-          <div
-            v-for="asset in assetAllocation"
-            :key="asset.id"
-            class="legend-item"
-            :class="{ active: expandedAsset === asset.id }"
-            @click="toggleAsset(asset.id)"
-          >
-            <div class="legend-left">
-              <span class="legend-dot" :style="{ background: asset.color }"></span>
-              <div>
-                <div class="legend-name">{{ asset.name }}</div>
-                <div class="legend-desc">{{ asset.desc }}</div>
-              </div>
-            </div>
-            <div class="legend-right">
-              <span class="legend-pct">{{ asset.pct }}%</span>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="legend-chevron" :style="{ transform: expandedAsset === asset.id ? 'rotate(180deg)' : 'rotate(0deg)' }">
-                <path d="m6 9 6 6 6-6"/>
-              </svg>
-            </div>
-          </div>
-        </div>
+      <!-- Error -->
+      <div v-else-if="error" class="error-state">
+        <p>{{ error }}</p>
+        <button class="btn-primary" @click="goBack">返回首页</button>
       </div>
 
-      <!-- Expanded Asset Detail -->
-      <Transition name="asset-expand">
-        <div v-if="expandedAsset" class="asset-detail">
-          <div
-            v-for="asset in assetAllocation.filter(a => a.id === expandedAsset)"
-            :key="asset.id"
-            class="detail-card"
-          >
-            <div class="detail-header">
-              <span class="detail-dot" :style="{ background: asset.color }"></span>
-              <span class="detail-title">{{ asset.name }} · 策略选择</span>
-            </div>
+      <template v-else>
+        <!-- Reliability Banner -->
+        <div class="reliability-banner" v-if="reliability">
+          <div class="reliability-item">
+            <span class="reliability-label">可靠性</span>
+            <span class="reliability-val" :class="`level-${reliability.reliability_level}`">
+              {{ reliability.reliability_level }}
+            </span>
+          </div>
+          <div class="reliability-item">
+            <span class="reliability-label">置信度</span>
+            <span class="reliability-val">{{ Math.round((reliability.confidence || 0) * 100) }}%</span>
+          </div>
+          <div class="reliability-item">
+            <span class="reliability-label">组合寿命</span>
+            <span class="reliability-val">{{ portfolioLifespan }}月</span>
+          </div>
+        </div>
 
-            <!-- System Recommended Holdings -->
-            <div class="holdings-list">
-              <div class="holdings-header">
-                <span class="holdings-label">系统推荐组合</span>
-                <span class="holdings-sub">基于当前深度衰退周期调整</span>
-              </div>
-              <div
-                v-for="holding in asset.holdings"
-                :key="holding.code"
-                class="holding-item"
-              >
-                <div class="holding-main">
-                  <div class="holding-info">
-                    <span class="holding-name">{{ holding.name }}</span>
-                    <span class="holding-code">{{ holding.code }}</span>
-                  </div>
-                  <div class="holding-weight">
-                    <div class="weight-bar-wrap">
-                      <div class="weight-bar" :style="{ width: holding.weight + '%', background: asset.color }"></div>
-                    </div>
-                    <span class="weight-pct">{{ holding.weight }}%</span>
-                  </div>
+        <!-- Allocation Chart -->
+        <div class="alloc-card">
+          <div class="alloc-header">
+            <span class="alloc-label">资产配置</span>
+            <span class="alloc-sub">基于画像风险等级与市场周期动态调整</span>
+          </div>
+
+          <div class="donut-wrap">
+            <svg viewBox="0 0 120 120" class="donut-svg">
+              <circle cx="60" cy="60" r="46" fill="none" stroke="#f0f0f0" stroke-width="12"/>
+              <circle
+                v-for="seg in donutSegments"
+                :key="seg.id"
+                cx="60" cy="60" r="46" fill="none"
+                :stroke="seg.color"
+                stroke-width="12" stroke-linecap="round"
+                :stroke-dasharray="`${seg.dash} 289`"
+                :stroke-dashoffset="seg.offset"
+                transform="rotate(-90 60 60)"
+              />
+            </svg>
+            <div class="donut-center">
+              <div class="donut-total">{{ totalPct }}%</div>
+              <div class="donut-total-label">总配置</div>
+            </div>
+          </div>
+
+          <!-- Legend -->
+          <div class="alloc-legend">
+            <div
+              v-for="asset in assetAllocation"
+              :key="asset.id"
+              class="legend-item"
+              :class="{ active: expandedAsset === asset.id }"
+              @click="toggleAsset(asset.id)"
+            >
+              <div class="legend-left">
+                <span class="legend-dot" :style="{ background: asset.color }"></span>
+                <div>
+                  <div class="legend-name">{{ asset.name }}</div>
+                  <div class="legend-desc">{{ asset.desc }}</div>
                 </div>
-                <p class="holding-reason">{{ holding.reason }}</p>
+              </div>
+              <div class="legend-right">
+                <span class="legend-pct">{{ asset.pct }}%</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="legend-chevron" :style="{ transform: expandedAsset === asset.id ? 'rotate(180deg)' : 'rotate(0deg)' }">
+                  <path d="m6 9 6 6 6-6"/>
+                </svg>
               </div>
             </div>
-
-            <!-- Buy Guide Button -->
-            <button class="buy-guide-btn" @click="openBuyGuide(asset.name)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 16v-4"/>
-                <path d="M12 8h.01"/>
-              </svg>
-              <span>详细的指引</span>
-            </button>
           </div>
         </div>
-      </Transition>
 
-      <!-- Summary Footer -->
-      <div class="summary-footer">
-        <div class="summary-item">
-          <span class="summary-label">预期年化</span>
-          <span class="summary-val">8-12%</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">最大回撤</span>
-          <span class="summary-val">&lt;15%</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">再平衡</span>
-          <span class="summary-val">季度</span>
-        </div>
-      </div>
+        <!-- Expanded Asset Detail -->
+        <Transition name="asset-expand">
+          <div v-if="expandedAsset" class="asset-detail">
+            <div
+              v-for="asset in assetAllocation.filter(a => a.id === expandedAsset)"
+              :key="asset.id"
+              class="detail-card"
+            >
+              <div class="detail-header">
+                <span class="detail-dot" :style="{ background: asset.color }"></span>
+                <span class="detail-title">{{ asset.name }} · 策略绑定</span>
+              </div>
 
-      <!-- Next Page Button -->
-      <button class="next-page-btn" @click="goNext">
-        <span>下一页：匹配投资策略</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M5 12h14"/>
-          <path d="m12 5 7 7-7 7"/>
-        </svg>
-      </button>
+              <!-- System Recommended Holdings -->
+              <div class="holdings-list">
+                <div class="holdings-header">
+                  <span class="holdings-label">系统推荐持仓</span>
+                  <span class="holdings-sub">基于Hybrid引擎动态选股</span>
+                </div>
+                <div
+                  v-for="holding in asset.holdings"
+                  :key="holding.code"
+                  class="holding-item"
+                >
+                  <div class="holding-main">
+                    <div class="holding-info">
+                      <span class="holding-name">{{ holding.name }}</span>
+                      <span class="holding-code">{{ holding.code }}</span>
+                    </div>
+                    <div class="holding-weight">
+                      <div class="weight-bar-wrap">
+                        <div class="weight-bar" :style="{ width: holding.weight + '%', background: asset.color }"></div>
+                      </div>
+                      <span class="weight-pct">{{ holding.weight }}%</span>
+                    </div>
+                  </div>
+                  <p class="holding-reason">{{ holding.reason }}</p>
+                </div>
+              </div>
 
-      <!-- Rebuild Button -->
-      <button class="rebuild-btn" @click="goProfile">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-          <path d="M21 3v5h-5"/>
-          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-          <path d="M8 16H3v5"/>
-        </svg>
-        <span>重新定制组合</span>
-      </button>
+              <!-- Buy Guide Button -->
+              <button class="buy-guide-btn" @click="openBuyGuide(asset.name)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 16v-4"/>
+                  <path d="M12 8h.01"/>
+                </svg>
+                <span>购买指引</span>
+              </button>
+            </div>
+          </div>
+        </Transition>
+
+        <!-- Risk Config -->
+        <div class="risk-card" v-if="riskConfig">
+          <div class="risk-header">
+            <span class="risk-label">风控配置</span>
+          </div>
+          <div class="risk-grid">
+            <div class="risk-item">
+              <span class="risk-name">止损线</span>
+              <span class="risk-val">{{ Math.round((riskConfig.stop_loss || 0) * 100) }}%</span>
+            </div>
+            <div class="risk-item">
+              <span class="risk-name">最大回撤</span>
+              <span class="risk-val">{{ Math.round((riskConfig.max_drawdown || 0) * 100) }}%</span>
+            </div>
+            <div class="risk-item">
+              <span class="risk-name">单标的上限</span>
+              <span class="risk-val">{{ Math.round((riskConfig.max_position || 0) * 100) }}%</span>
+            </div>
+            <div class="risk-item">
+              <span class="risk-name">再平衡阈值</span>
+              <span class="risk-val">{{ Math.round((riskConfig.rebalance_threshold || 0) * 100) }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary Footer -->
+        <div class="summary-footer">
+          <div class="summary-item">
+            <span class="summary-label">股票占比</span>
+            <span class="summary-val">{{ saaWeights.stock ? Math.round(saaWeights.stock * 100) : 45 }}%</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">最大回撤</span>
+            <span class="summary-val">&lt;{{ Math.round((riskConfig.max_drawdown || 0.15) * 100) }}%</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">再平衡</span>
+            <span class="summary-val">{{ riskConfig.rebalance_threshold ? (riskConfig.rebalance_threshold * 100 >= 5 ? '季度' : '月度') : '季度' }}</span>
+          </div>
+        </div>
+
+        <!-- Next Page Button -->
+        <button class="next-page-btn" @click="goNext">
+          <span>下一页：匹配投资策略</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14"/>
+            <path d="m12 5 7 7-7 7"/>
+          </svg>
+        </button>
+
+        <!-- Rebuild Button -->
+        <button class="rebuild-btn" @click="goProfile">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5"/>
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+            <path d="M8 16H3v5"/>
+          </svg>
+          <span>重新定制组合</span>
+        </button>
+      </template>
     </div>
 
     <!-- Buy Guide Modal -->
@@ -278,8 +408,8 @@ const totalPct = computed(() => assetAllocation.value.reduce((s, a) => s + a.pct
           </div>
 
           <div class="modal-body">
-            <div class="placeholder-guide">
-              <div class="placeholder-icon">
+            <div class="guide-placeholder">
+              <div class="guide-icon">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
@@ -288,8 +418,8 @@ const totalPct = computed(() => assetAllocation.value.reduce((s, a) => s + a.pct
                   <polyline points="10 9 9 9 8 9"/>
                 </svg>
               </div>
-              <p class="placeholder-text">详细的指引</p>
-              <p class="placeholder-sub">购买教程正在编写中，敬请期待</p>
+              <p class="guide-text">购买教程开发中</p>
+              <p class="guide-sub">请通过券商APP搜索对应代码购买</p>
             </div>
           </div>
         </div>
@@ -348,6 +478,26 @@ const totalPct = computed(() => assetAllocation.value.reduce((s, a) => s + a.pct
   width: 100%; display: flex; flex-direction: column; gap: 16px;
   position: relative; z-index: 1;
 }
+.loading-state, .error-state {
+  text-align: center; padding: 60px 20px; color: #a3a3a3;
+}
+.error-state p { margin-bottom: 20px; }
+
+/* Reliability Banner */
+.reliability-banner {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.reliability-item {
+  text-align: center; padding: 16px 12px;
+  background: #fff; border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.05);
+}
+.reliability-label { font-size: 0.68rem; color: #a3a3a3; display: block; margin-bottom: 6px; }
+.reliability-val { font-size: 1.1rem; font-weight: 700; color: #171717; }
+.level-高 { color: #22c55e; }
+.level-中 { color: #d97706; }
+.level-低 { color: #ef4444; }
 
 /* Allocation Card */
 .alloc-card {
@@ -497,23 +647,47 @@ const totalPct = computed(() => assetAllocation.value.reduce((s, a) => s + a.pct
   margin: 0;
 }
 
-/* Placeholder Guide */
-.placeholder-guide {
+/* Risk Card */
+.risk-card {
+  background: #fff; border-radius: 20px; padding: 20px 22px;
+  border: 1px solid rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+.risk-header {
+  margin-bottom: 14px;
+}
+.risk-label {
+  font-size: 0.62rem; font-weight: 700; color: #d4d4d4;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.risk-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.risk-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; background: #fafafa; border-radius: 10px;
+}
+.risk-name { font-size: 0.78rem; color: #737373; }
+.risk-val { font-size: 0.9rem; font-weight: 700; color: #171717; }
+
+/* Guide Placeholder */
+.guide-placeholder {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   padding: 40px 20px; text-align: center;
 }
-.placeholder-icon {
+.guide-icon {
   width: 64px; height: 64px; border-radius: 16px;
   background: #fafafa; color: #a3a3a3;
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 16px;
 }
-.placeholder-text {
+.guide-text {
   font-size: 1rem; font-weight: 600; color: #171717;
   margin: 0 0 6px;
 }
-.placeholder-sub {
+.guide-sub {
   font-size: 0.82rem; color: #a3a3a3; margin: 0;
 }
 
@@ -616,43 +790,6 @@ const totalPct = computed(() => assetAllocation.value.reduce((s, a) => s + a.pct
 
 .modal-body {
   padding: 24px;
-}
-
-/* Guide Steps */
-.guide-steps {
-  display: flex; flex-direction: column; gap: 16px;
-  margin-bottom: 24px;
-}
-.guide-step {
-  display: flex; gap: 14px; align-items: flex-start;
-}
-.step-num {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: #171717; color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.82rem; font-weight: 700;
-  flex-shrink: 0;
-}
-.step-text {
-  font-size: 0.88rem; color: #525252; line-height: 1.6;
-  margin: 4px 0 0;
-}
-
-/* Guide Tip */
-.guide-tip {
-  display: flex; gap: 12px; align-items: flex-start;
-  padding: 16px; background: #fafafa;
-  border-radius: 14px; border: 1px solid rgba(0,0,0,0.04);
-}
-.tip-icon {
-  width: 32px; height: 32px; border-radius: 10px;
-  background: #171717; color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.tip-text {
-  font-size: 0.85rem; color: #525252; line-height: 1.6;
-  margin: 0;
 }
 
 /* Transitions */

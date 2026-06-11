@@ -11,9 +11,11 @@ import traceback
 from typing import Any
 from datetime import datetime
 
-import akshare as ak
 import pandas as pd
 import numpy as np
+
+from app.services.data_fetcher import fetch_stock_data
+from app.services.data_cache import get_ohlcv as cache_get_ohlcv
 
 
 # ── 标准化信号格式 ──
@@ -40,18 +42,12 @@ def make_signal(
 # ── 数据获取 ──
 
 def fetch_ohlcv(symbol: str, start_date: str, end_date: str) -> pd.DataFrame | None:
-    """获取日频OHLCV数据."""
+    """获取日频OHLCV数据（使用可用的新浪接口）."""
     try:
-        df = ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start_date, end_date=end_date, adjust="qfq")
+        # data_fetcher 统一输出英文列名 [date, open, high, low, close, volume]
+        df = fetch_stock_data(symbol, start_date, end_date)
         if df is None or df.empty:
             return None
-        df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
-        # 标准化列名
-        col_map = {
-            "日期": "date", "开盘": "open", "收盘": "close",
-            "最高": "high", "最低": "low", "成交量": "volume",
-        }
-        df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
         return df
     except Exception as e:
         print(f"[TemplateRunner] Fetch error for {symbol}: {e}")
@@ -59,17 +55,14 @@ def fetch_ohlcv(symbol: str, start_date: str, end_date: str) -> pd.DataFrame | N
 
 
 def fetch_etf_ohlcv(symbol: str, start_date: str, end_date: str) -> pd.DataFrame | None:
-    """获取ETF日频数据."""
+    """获取ETF日频数据（优先读缓存，当前akshare无可用免费ETF历史接口）."""
     try:
-        df = ak.fund_etf_hist_em(symbol=symbol, period="daily", start_date=start_date, end_date=end_date, adjust="qfq")
-        if df is None or df.empty:
-            return None
-        col_map = {
-            "日期": "date", "开盘": "open", "收盘": "close",
-            "最高": "high", "最低": "low", "成交量": "volume",
-        }
-        df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
-        return df
+        # 尝试读本地缓存（如果之前通过其他方式存入）
+        df = cache_get_ohlcv(symbol, start_date, end_date)
+        if df is not None and not df.empty:
+            return df
+        print(f"[TemplateRunner] ETF historical data ({symbol}) is not available via akshare currently")
+        return None
     except Exception as e:
         print(f"[TemplateRunner] ETF fetch error for {symbol}: {e}")
         return None

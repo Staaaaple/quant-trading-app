@@ -69,6 +69,10 @@ async function loadSignal() {
   error.value = ''
   try {
     signal.value = await marketSignalApi.getLatest()
+    // 存储到 sessionStorage，供其他页面使用
+    if (signal.value) {
+      sessionStorage.setItem('latest_market_signal', JSON.stringify(signal.value))
+    }
   } catch (e: any) {
     error.value = e.message || '加载失败'
   } finally {

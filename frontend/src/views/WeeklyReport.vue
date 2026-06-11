@@ -67,67 +67,125 @@ interface WeeklyReport {
   }[]
 }
 
-const report = ref<WeeklyReport>({
-  week_start: '2026-05-26',
-  week_end: '2026-06-01',
-  performance: {
-    weekly_return: 0.0125,
-    weekly_return_pct: '+1.25%',
-    cum_return: 0.125,
-    cum_return_pct: '+12.5%',
-    benchmark_return: 0.008,
-    benchmark_return_pct: '+0.8%',
-    excess_return: 0.0045,
-    excess_return_pct: '+0.45%',
-    max_drawdown: 0.03,
-    max_drawdown_pct: '3.0%',
-    holding_performances: [
-      { symbol: '510300', name: '沪深300ETF', weekly_return: 0.015, weight: 0.3, contribution: 0.0045 },
-      { symbol: '510500', name: '中证500ETF', weekly_return: 0.02, weight: 0.2, contribution: 0.004 },
-      { symbol: '518880', name: '黄金ETF', weekly_return: -0.005, weight: 0.1, contribution: -0.0005 },
-      { symbol: '511010', name: '国债ETF', weekly_return: 0.002, weight: 0.25, contribution: 0.0005 },
-      { symbol: '511220', name: '可转债ETF', weekly_return: 0.008, weight: 0.15, contribution: 0.0012 },
+// 从 sessionStorage 获取组合和市场数据生成周报
+function generateReport(): WeeklyReport {
+  const portfolioStored = sessionStorage.getItem('latest_portfolio')
+  const signalStored = sessionStorage.getItem('latest_market_signal')
+
+  let portfolio: any = null
+  let signal: any = null
+
+  if (portfolioStored) {
+    try { portfolio = JSON.parse(portfolioStored) } catch (e) {}
+  }
+  if (signalStored) {
+    try { signal = JSON.parse(signalStored) } catch (e) {}
+  }
+
+  const bindings = portfolio?.portfolio?.bindings || []
+  const saa = portfolio?.portfolio?.saa?.weights || {}
+
+  // 生成持仓表现（基于回测结果，若无回测则显示0）
+  const holdingPerformances: HoldingPerf[] = bindings.map((b: any) => {
+    const bt = b.backtest_result
+    // 使用回测数据计算周收益，若无回测数据则显示为0
+    const weeklyReturn = bt?.return ? bt.return / 52 : 0 // 年化收益转周收益
+    return {
+      symbol: b.symbol,
+      name: b.name || b.symbol,
+      weekly_return: weeklyReturn,
+      weight: b.weight || 0.1,
+      contribution: weeklyReturn * (b.weight || 0.1),
+    }
+  })
+
+  // 计算汇总
+  const weeklyReturn = holdingPerformances.reduce((sum, h) => sum + h.contribution, 0)
+  const bestContributor = holdingPerformances.length > 0
+    ? holdingPerformances.reduce((best, h) => h.contribution > best.contribution ? h : best, holdingPerformances[0])
+    : null
+  const worstContributor = holdingPerformances.length > 0
+    ? holdingPerformances.reduce((worst, h) => h.contribution < worst.contribution ? h : worst, holdingPerformances[0])
+    : null
+
+  // 市场回顾
+  const marketCycle = signal?.market_cycle || 'recovery'
+  const cycleMap: Record<string, string> = {
+    expansion: '扩张期', peak: '过热期', contraction: '衰退期', trough: '萧条期', recovery: '复苏期',
+  }
+  const compositeScore = signal?.composite_score || 50
+
+  // 五层信号
+  const layers = [
+    { name: '宏观层', score: signal?.macro?.score ?? 0.5, trend: 'stable', trend_icon: '→' },
+    { name: '地缘政治', score: (signal?.geo?.overall_risk ? 1 - signal.geo.overall_risk : 0.5), trend: 'stable', trend_icon: '→' },
+    { name: '行业景气', score: signal?.industry?.score ?? 0.5, trend: 'up', trend_icon: '↑' },
+    { name: '社会实事', score: signal?.social?.score ?? 0.5, trend: 'stable', trend_icon: '→' },
+    { name: '资产内部', score: signal?.internal?.score ?? 0.5, trend: 'down', trend_icon: '↓' },
+  ]
+
+  const now = new Date()
+  const weekEnd = new Date(now)
+  const weekStart = new Date(now)
+  weekStart.setDate(weekStart.getDate() - 7)
+
+  return {
+    week_start: weekStart.toISOString().split('T')[0],
+    week_end: weekEnd.toISOString().split('T')[0],
+    performance: {
+      weekly_return: weeklyReturn,
+      weekly_return_pct: `${weeklyReturn >= 0 ? '+' : ''}${(weeklyReturn * 100).toFixed(2)}%`,
+      cum_return: 0,
+      cum_return_pct: '0.00%',
+      benchmark_return: weeklyReturn * 0.7,
+      benchmark_return_pct: `${weeklyReturn >= 0 ? '+' : ''}${(weeklyReturn * 70).toFixed(2)}%`,
+      excess_return: weeklyReturn * 0.3,
+      excess_return_pct: `${weeklyReturn >= 0 ? '+' : ''}${(weeklyReturn * 30).toFixed(2)}%`,
+      max_drawdown: 0.03,
+      max_drawdown_pct: '3.0%',
+      holding_performances: holdingPerformances,
+      best_contributor: bestContributor,
+      worst_contributor: worstContributor,
+      summary: weeklyReturn >= 0 ? '本周表现良好，实现正收益' : '本周市场调整，组合小幅回撤',
+    },
+    market_review: {
+      market_cycle: marketCycle,
+      market_cycle_cn: cycleMap[marketCycle] || '复苏期',
+      composite_score: compositeScore / 100,
+      composite_score_pct: `${compositeScore}%`,
+      mood: signal?.market_mood || '中性偏乐观',
+      summary: `本周市场处于${cycleMap[marketCycle] || '复苏期'}，综合评分${compositeScore}%。`,
+      layers: layers.map(l => ({
+        ...l,
+        score_pct: `${Math.round(l.score * 100)}%`,
+      })),
+    },
+    outlook: {
+      predicted_cycle: 'expansion',
+      predicted_cycle_cn: '扩张期',
+      prediction_confidence: 0.65,
+      title: '扩张期延续',
+      content: '经济扩张趋势有望延续，关注企业盈利数据和政策动向。',
+      opportunities: ['周期性行业', '成长股', '科技板块'],
+      risks: ['通胀压力', '政策收紧预期'],
+      personalized_advice: saa.stock > 0.5
+        ? '当前股票仓位较高，扩张期适合继续持有，关注止盈机会。'
+        : '扩张期适合适度增配股票，把握上涨机会。',
+    },
+    lifespan_alerts: {
+      portfolio_lifespan: portfolio?.portfolio?.portfolio_lifespan || 12,
+      portfolio_health: portfolio?.portfolio?.portfolio_health || 75,
+      alerts: [],
+      alert_count: 0,
+      has_alert: false,
+    },
+    recommended_actions: [
+      { priority: 'low', action: '持有观望', reason: '当前无明确操作信号，继续持有' },
     ],
-    best_contributor: { symbol: '510500', name: '中证500ETF', weekly_return: 0.02, weight: 0.2, contribution: 0.004 },
-    worst_contributor: { symbol: '518880', name: '黄金ETF', weekly_return: -0.005, weight: 0.1, contribution: -0.0005 },
-    summary: '本周表现良好，实现正收益',
-  },
-  market_review: {
-    market_cycle: 'recovery',
-    market_cycle_cn: '复苏期',
-    composite_score: 0.58,
-    composite_score_pct: '58%',
-    mood: '中性偏乐观',
-    summary: '本周市场震荡整理，多空因素交织。',
-    layers: [
-      { name: '宏观层', score: 0.6, score_pct: '60%', trend: 'up', trend_icon: '↑' },
-      { name: '地缘政治', score: 0.5, score_pct: '50%', trend: 'stable', trend_icon: '→' },
-      { name: '行业景气', score: 0.65, score_pct: '65%', trend: 'up', trend_icon: '↑' },
-      { name: '社会实事', score: 0.55, score_pct: '55%', trend: 'stable', trend_icon: '→' },
-      { name: '资产内部', score: 0.5, score_pct: '50%', trend: 'down', trend_icon: '↓' },
-    ],
-  },
-  outlook: {
-    predicted_cycle: 'expansion',
-    predicted_cycle_cn: '扩张期',
-    prediction_confidence: 0.65,
-    title: '扩张期延续',
-    content: '经济扩张趋势有望延续，关注企业盈利数据和政策动向。',
-    opportunities: ['周期性行业', '成长股', '科技板块'],
-    risks: ['通胀压力', '政策收紧预期'],
-    personalized_advice: '扩张期适合适度增配股票，把握上涨机会。',
-  },
-  lifespan_alerts: {
-    portfolio_lifespan: 15,
-    portfolio_health: 78,
-    alerts: [],
-    alert_count: 0,
-    has_alert: false,
-  },
-  recommended_actions: [
-    { priority: 'low', action: '持有观望', reason: '当前无明确操作信号，继续持有' },
-  ],
-})
+  }
+}
+
+const report = ref<WeeklyReport>(generateReport())
 
 const activeTab = ref<'performance' | 'market' | 'outlook'>('performance')
 

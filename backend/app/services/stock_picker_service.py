@@ -25,8 +25,21 @@ DEFAULT_BUILTIN_CODE = '''def pick_stocks():
     from datetime import datetime, timedelta
 
     # --------------- 数据准备 ---------------
-    # 1. 当日全市场行情（新浪接口）
-    spot = ak.stock_zh_a_spot()
+    # 1. 当日全市场行情（新浪接口，带重试）
+    import time as _time
+    spot = None
+    for _attempt in range(3):
+        try:
+            spot = ak.stock_zh_a_spot()
+            if spot is not None and not spot.empty:
+                break
+        except Exception:
+            pass
+        _time.sleep(2)
+
+    if spot is None or spot.empty:
+        return []
+
     spot = spot[spot["代码"].str.startswith(("sh", "sz"))].copy()
     spot = spot[~spot["名称"].str.contains("ST|退", na=False)]
     spot = spot[~spot["名称"].str.contains("^N|^C", regex=True, na=False)]

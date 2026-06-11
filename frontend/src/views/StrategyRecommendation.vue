@@ -1,45 +1,44 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
-// Mock recommendations
-const recommendations = ref([
-  {
-    id: 'r1',
-    title: '科技ETF增强策略',
-    family: '动量策略',
-    reason: '当前科技行业景气度高，AI趋势持续，适合增配',
-    expectedReturn: '15-20%',
-    riskLevel: '中高',
-    sharpe: 1.2,
-    maxDrawdown: '-15%',
-    match: 92,
-  },
-  {
-    id: 'r2',
-    title: '红利低波动策略',
-    family: '低波动',
-    reason: '防御性配置，提供稳定现金流',
-    expectedReturn: '8-12%',
-    riskLevel: '中低',
-    sharpe: 0.9,
-    maxDrawdown: '-8%',
-    match: 85,
-  },
-  {
-    id: 'r3',
-    title: '商品趋势跟踪',
-    family: '趋势跟踪',
-    reason: '通胀预期上升，商品类资产对冲',
-    expectedReturn: '10-15%',
-    riskLevel: '中等',
-    sharpe: 0.8,
-    maxDrawdown: '-12%',
-    match: 78,
-  },
-])
+// ── 从 sessionStorage 获取组合数据 ──
+const portfolioData = ref<any>(null)
+const loading = ref(true)
+const error = ref('')
+
+// 从 bindings 生成策略推荐
+const recommendations = computed(() => {
+  const bindings = portfolioData.value?.portfolio?.bindings || []
+  if (bindings.length === 0) return []
+
+  return bindings.map((b: any, idx: number) => {
+    // 计算匹配度（基于weight和llm_score）
+    const match = Math.min(95, Math.round(
+      ((b.weight || 0.1) * 50 + (b.llm_score || 0.5) * 50) * 100
+    ))
+
+    // 预期收益（简化估算）
+    const expectedReturn = match >= 85 ? '12-18%' : match >= 70 ? '8-14%' : '5-10%'
+    const riskLevel = (b.weight || 0) > 0.15 ? '中高' : (b.weight || 0) > 0.08 ? '中等' : '中低'
+
+    return {
+      id: b.strategy_id || `rec_${idx}`,
+      title: b.strategy_name || `${b.sector_name}策略`,
+      family: b.strategy_family || '未分类',
+      reason: b.reasoning || `基于${b.sector_name}行业景气度与策略模板匹配`,
+      expectedReturn,
+      riskLevel,
+      sharpe: b.composite_score ? (b.composite_score * 2).toFixed(1) : '1.0',
+      maxDrawdown: `-${Math.round((b.weight || 0.1) * 100 + 5)}%`,
+      match,
+      symbol: b.symbol,
+      weight: b.weight,
+    }
+  }).sort((a: any, b: any) => b.match - a.match)
+})
 
 function goBack() {
   router.push('/')
@@ -50,7 +49,17 @@ function goPortfolio() {
 }
 
 onMounted(() => {
-  // TODO: Load from API
+  const stored = sessionStorage.getItem('latest_portfolio')
+  if (stored) {
+    try {
+      portfolioData.value = JSON.parse(stored)
+    } catch (e) {
+      error.value = '数据解析失败'
+    }
+  } else {
+    error.value = '暂无推荐数据，请返回首页生成组合'
+  }
+  loading.value = false
 })
 </script>
 
@@ -75,70 +84,82 @@ onMounted(() => {
 
     <!-- Content -->
     <div class="recommendation-content">
-      <div class="intro-card">
-        <div class="intro-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5c0-2 2-3 4-3z"/>
-            <path d="M8 13v4"/><path d="M16 13v4"/><path d="M12 15v4"/>
-          </svg>
-        </div>
-        <div class="intro-text">
-          <h2 class="intro-title">为你精选的策略</h2>
-          <p class="intro-desc">基于你的画像和市场信号，AI 筛选出以下匹配度最高的策略</p>
-        </div>
+      <!-- Loading -->
+      <div v-if="loading" class="loading-state">加载中...</div>
+
+      <!-- Error -->
+      <div v-else-if="error" class="error-state">
+        <p>{{ error }}</p>
+        <button class="btn-primary" @click="goBack">返回首页</button>
       </div>
 
-      <!-- Recommendations -->
-      <div class="rec-list">
-        <div v-for="rec in recommendations" :key="rec.id" class="rec-card">
-          <div class="rec-header">
-            <div class="rec-info">
-              <div class="rec-title">{{ rec.title }}</div>
-              <div class="rec-family">{{ rec.family }}</div>
-            </div>
-            <div class="rec-match">
-              <div class="match-ring">
-                <svg viewBox="0 0 40 40" class="match-svg">
-                  <circle cx="20" cy="20" r="16" fill="none" stroke="#f0f0f0" stroke-width="3"/>
-                  <circle cx="20" cy="20" r="16" fill="none" stroke="#171717" stroke-width="3" stroke-linecap="round"
-                    :stroke-dasharray="`${rec.match / 100 * 100.5} 100.5`" stroke-dashoffset="0" transform="rotate(-90 20 20)"/>
-                </svg>
-                <div class="match-val">{{ rec.match }}</div>
+      <template v-else>
+        <!-- Intro -->
+        <div class="intro-card">
+          <div class="intro-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5c0-2 2-3 4-3z"/>
+              <path d="M8 13v4"/><path d="M16 13v4"/><path d="M12 15v4"/>
+            </svg>
+          </div>
+          <div class="intro-text">
+            <h2 class="intro-title">为你精选的策略</h2>
+            <p class="intro-desc">基于你的画像和市场信号，AI 筛选出以下匹配度最高的策略</p>
+          </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="rec-list">
+          <div v-for="rec in recommendations" :key="rec.id" class="rec-card">
+            <div class="rec-header">
+              <div class="rec-info">
+                <div class="rec-title">{{ rec.title }}</div>
+                <div class="rec-family">{{ rec.family }} · {{ rec.symbol }}</div>
               </div>
-              <div class="match-label">匹配度</div>
+              <div class="rec-match">
+                <div class="match-ring">
+                  <svg viewBox="0 0 40 40" class="match-svg">
+                    <circle cx="20" cy="20" r="16" fill="none" stroke="#f0f0f0" stroke-width="3"/>
+                    <circle cx="20" cy="20" r="16" fill="none" stroke="#171717" stroke-width="3" stroke-linecap="round"
+                      :stroke-dasharray="`${rec.match / 100 * 100.5} 100.5`" stroke-dashoffset="0" transform="rotate(-90 20 20)"/>
+                  </svg>
+                  <div class="match-val">{{ rec.match }}</div>
+                </div>
+                <div class="match-label">匹配度</div>
+              </div>
             </div>
-          </div>
 
-          <div class="rec-reason">
-            <span class="reason-label">推荐理由</span>
-            <p class="reason-text">{{ rec.reason }}</p>
-          </div>
+            <div class="rec-reason">
+              <span class="reason-label">推荐理由</span>
+              <p class="reason-text">{{ rec.reason }}</p>
+            </div>
 
-          <div class="rec-metrics">
-            <div class="metric">
-              <span class="metric-label">预期收益</span>
-              <span class="metric-val">{{ rec.expectedReturn }}</span>
+            <div class="rec-metrics">
+              <div class="metric">
+                <span class="metric-label">预期收益</span>
+                <span class="metric-val">{{ rec.expectedReturn }}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">风险等级</span>
+                <span class="metric-val">{{ rec.riskLevel }}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">夏普</span>
+                <span class="metric-val">{{ rec.sharpe }}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">最大回撤</span>
+                <span class="metric-val down">{{ rec.maxDrawdown }}</span>
+              </div>
             </div>
-            <div class="metric">
-              <span class="metric-label">风险等级</span>
-              <span class="metric-val">{{ rec.riskLevel }}</span>
-            </div>
-            <div class="metric">
-              <span class="metric-label">夏普</span>
-              <span class="metric-val">{{ rec.sharpe }}</span>
-            </div>
-            <div class="metric">
-              <span class="metric-label">最大回撤</span>
-              <span class="metric-val down">{{ rec.maxDrawdown }}</span>
-            </div>
-          </div>
 
-          <button class="rec-btn" @click="goPortfolio">
-            <span>加入组合</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </button>
+            <button class="rec-btn" @click="goPortfolio">
+              <span>查看组合</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </button>
+          </div>
         </div>
-      </div>
+      </template>
     </div>
   </div>
 </template>
@@ -194,6 +215,10 @@ onMounted(() => {
   width: 100%; display: flex; flex-direction: column; gap: 14px;
   position: relative; z-index: 1;
 }
+.loading-state, .error-state {
+  text-align: center; padding: 60px 20px; color: #a3a3a3;
+}
+.error-state p { margin-bottom: 20px; }
 
 /* Intro */
 .intro-card {

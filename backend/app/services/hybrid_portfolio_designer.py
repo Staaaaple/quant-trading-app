@@ -9,20 +9,56 @@
 6. 组合寿命计算
 """
 
+import datetime
 from typing import Any
 
 from app.services.saa_engine import calculate_saa, get_risk_level_from_profile, get_market_cycle_from_signal
 from app.services.taa_engine import calculate_taa, get_top_sectors
 
 
-# 策略模板池（35个占位）
-# 实际应从数据库加载，这里先用硬编码占位
+def _load_strategy_templates() -> list[dict[str, Any]]:
+    """从数据库加载策略模板池."""
+    try:
+        from sqlalchemy.orm import Session
+        from app.db.base import SessionLocal
+        from app.models.strategy_template import StrategyTemplate
+
+        db: Session = SessionLocal()
+        try:
+            templates = db.query(StrategyTemplate).filter(
+                StrategyTemplate.is_active == True
+            ).all()
+            return [
+                {
+                    "id": t.template_id,
+                    "name": t.name,
+                    "family": t.family,
+                    "risk_level": t.risk_level,
+                    "suitable_cycles": t.suitable_cycles or [],
+                    "health_score": t.health_score,
+                    "lifespan_months": t.lifespan_months,
+                }
+                for t in templates
+            ]
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[PortfolioDesigner] Failed to load templates from DB: {e}")
+        return []
+
+
+# 回退策略模板池（当数据库不可用时）
 DEFAULT_STRATEGY_TEMPLATES = [
-    {"id": "tmpl_001", "name": "双均线趋势", "family": "趋势跟踪", "risk_level": "medium", "suitable_cycles": ["中线"]},
-    {"id": "tmpl_002", "name": "EMA动量", "family": "动量策略", "risk_level": "medium", "suitable_cycles": ["短线", "中线"]},
-    {"id": "tmpl_003", "name": "RSI均值回归", "family": "均值回归", "risk_level": "low", "suitable_cycles": ["中线"]},
-    {"id": "tmpl_004", "name": "MACD趋势", "family": "趋势跟踪", "risk_level": "medium", "suitable_cycles": ["中线", "长线"]},
-    {"id": "tmpl_005", "name": "布林带突破", "family": "突破策略", "risk_level": "high", "suitable_cycles": ["短线"]},
+    {"id": "tmpl_001", "name": "双均线趋势跟踪", "family": "趋势跟踪", "risk_level": "medium", "suitable_cycles": ["复苏", "扩张"]},
+    {"id": "tmpl_002", "name": "EMA动量趋势", "family": "趋势跟踪", "risk_level": "medium", "suitable_cycles": ["复苏", "扩张", "过热"]},
+    {"id": "tmpl_003", "name": "RSI均值回归", "family": "均值回归", "risk_level": "low", "suitable_cycles": ["衰退", "复苏"]},
+    {"id": "tmpl_004", "name": "MACD趋势确认", "family": "趋势跟踪", "risk_level": "medium", "suitable_cycles": ["复苏", "扩张"]},
+    {"id": "tmpl_005", "name": "布林带回归", "family": "均值回归", "risk_level": "low", "suitable_cycles": ["衰退", "复苏", "过热"]},
+    {"id": "tmpl_006", "name": "价格动量突破", "family": "动量策略", "risk_level": "high", "suitable_cycles": ["扩张", "过热"]},
+    {"id": "tmpl_007", "name": "箱体突破", "family": "突破策略", "risk_level": "high", "suitable_cycles": ["复苏", "扩张"]},
+    {"id": "tmpl_008", "name": "价值因子", "family": "量化多因子", "risk_level": "low", "suitable_cycles": ["衰退", "复苏"]},
+    {"id": "tmpl_009", "name": "低波动因子", "family": "量化多因子", "risk_level": "low", "suitable_cycles": ["衰退", "复苏"]},
+    {"id": "tmpl_010", "name": "期现套利", "family": "套利策略", "risk_level": "low", "suitable_cycles": ["衰退", "复苏", "扩张", "过热"]},
 ]
 
 
@@ -68,22 +104,61 @@ def design_portfolio(
         market_signal=market_signal,
     )
 
-    # Step 3: 策略-标的绑定（简化版）
-    strategies = strategy_pool or DEFAULT_STRATEGY_TEMPLATES
-    top_sectors = get_top_sectors(taa_result, n=3)
+    # Step 3: 策略-标的绑定（智能匹配版）
+    strategies = strategy_pool or _load_strategy_templates() or DEFAULT_STRATEGY_TEMPLATES
+    top_sectors = get_top_sectors(taa_result, n=5)
 
-    # 简单匹配：为每个top sector分配一个策略
+    # 智能匹配：根据市场周期、行业、风险等级匹配最佳策略
+    cycle_map = {
+        "expansion": "扩张", "peak": "过热", "contraction": "衰退",
+        "trough": "萧条", "recovery": "复苏",
+    }
+    current_cycle = cycle_map.get(market_cycle, "复苏")
+
+    # 风险等级映射
+    risk_map = {
+        "conservative": ["low"], "moderate": ["low", "medium"],
+        "aggressive": ["medium", "high"], "very_aggressive": ["high"],
+    }
+    allowed_risk = risk_map.get(risk_level, ["low", "medium"])
+
     bindings = []
-    for i, sector_info in enumerate(top_sectors):
-        if i < len(strategies):
-            strategy = strategies[i]
+    used_strategies = set()
+
+    for sector_info in top_sectors:
+        sector = sector_info["sector"]
+        # 筛选匹配当前周期和风险等级的策略
+        candidates = [
+            s for s in strategies
+            if s["id"] not in used_strategies
+            and (s.get("risk_level") in allowed_risk or s.get("risk_level") == "medium")
+            and any(current_cycle in c or "复苏" in c for c in s.get("suitable_cycles", []))
+        ]
+
+        # 如果没有匹配，放宽条件
+        if not candidates:
+            candidates = [s for s in strategies if s["id"] not in used_strategies]
+
+        if candidates:
+            # 选择健康度最高的策略
+            best = max(candidates, key=lambda s: s.get("health_score", 70))
+            used_strategies.add(best["id"])
+
+            # 获取该行业的真实ETF
+            from app.services.assets import get_sector_etf
+            etf = get_sector_etf(sector)
+
             bindings.append({
-                "sector": sector_info["sector"],
+                "sector": sector,
                 "sector_name": sector_info["name"],
                 "weight": sector_info["weight"],
-                "strategy_id": strategy["id"],
-                "strategy_name": strategy["name"],
-                "strategy_family": strategy["family"],
+                "strategy_id": best["id"],
+                "strategy_name": best["name"],
+                "strategy_family": best["family"],
+                "symbol": etf.get("symbol") if etf else None,
+                "symbol_name": etf.get("name") if etf else sector_info["name"],
+                "health_score": best.get("health_score", 75),
+                "lifespan_months": best.get("lifespan_months", 12),
             })
 
     # Step 4: 风控配置
@@ -96,9 +171,19 @@ def design_portfolio(
         market_cycle=market_cycle,
     )
 
-    # Step 6: 组合寿命
-    portfolio_lifespan = 12  # 默认12个月
-    portfolio_health = 75    # 默认健康度75
+    # Step 6: 组合寿命（基于绑定策略的加权平均）
+    if bindings:
+        portfolio_lifespan = round(
+            sum(b.get("lifespan_months", 12) * b.get("weight", 0.1) for b in bindings) /
+            sum(b.get("weight", 0.1) for b in bindings), 1
+        )
+        portfolio_health = round(
+            sum(b.get("health_score", 75) * b.get("weight", 0.1) for b in bindings) /
+            sum(b.get("weight", 0.1) for b in bindings), 1
+        )
+    else:
+        portfolio_lifespan = 12
+        portfolio_health = 75
 
     return {
         "portfolio_id": f"pf_{hash(str(profile_vector)) % 10000:04d}",
@@ -109,7 +194,7 @@ def design_portfolio(
         "reliability": reliability,
         "portfolio_lifespan": portfolio_lifespan,
         "portfolio_health": portfolio_health,
-        "created_at": "2024-01-01",  # 应由调用方设置
+        "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),  # 实时读取系统时钟
         "status": "draft",
     }
 

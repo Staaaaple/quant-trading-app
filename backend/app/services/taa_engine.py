@@ -5,6 +5,8 @@
 
 from typing import Any
 
+from app.services.assets import get_sector_etf
+
 
 # 行业配置基准（基于SAA的股票部分）
 SECTOR_BASE_WEIGHTS = {
@@ -269,6 +271,7 @@ def get_top_sectors(
             "sector": sector,
             "weight": weight,
             "name": sector_names.get(sector, sector),
+            "symbol": get_sector_etf(sector)["symbol"] if get_sector_etf(sector) else None,
         }
         for sector, weight in sorted_sectors
     ]

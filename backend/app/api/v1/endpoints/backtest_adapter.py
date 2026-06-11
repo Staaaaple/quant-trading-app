@@ -3,6 +3,8 @@
 支持多资产类型回测、Walk-Forward验证、蒙特卡洛模拟、压力测试.
 """
 
+import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Any
@@ -33,18 +35,22 @@ def run_backtest(
         "symbols": ["000001", "510300"],
         "asset_types": ["stock", "etf"],
         "strategy_code": "...",
-        "start_date": "2024-01-01",
-        "end_date": "2024-12-31",
+        "start_date": "YYYY-MM-DD",  // 默认最近1年
+        "end_date": "YYYY-MM-DD",    // 默认今天
         "initial_cash": 100000,
     }
     """
     try:
+        # 动态默认日期：最近1年
+        today = datetime.date.today()
+        default_start = (today - datetime.timedelta(days=365)).isoformat()
+        default_end = today.isoformat()
         result = run_backtest_multi_asset(
             symbols=payload.get("symbols", []),
             asset_types=payload.get("asset_types", []),
             strategy_code=payload.get("strategy_code", ""),
-            start_date=payload.get("start_date", "2024-01-01"),
-            end_date=payload.get("end_date", "2024-12-31"),
+            start_date=payload.get("start_date", default_start),
+            end_date=payload.get("end_date", default_end),
             initial_cash=payload.get("initial_cash", 100000),
         )
         return result
@@ -63,19 +69,23 @@ def run_walk_forward(
         "symbol": "000001",
         "asset_type": "stock",
         "strategy_code": "...",
-        "start_date": "2020-01-01",
-        "end_date": "2024-12-31",
+        "start_date": "YYYY-MM-DD",  // 默认最近5年
+        "end_date": "YYYY-MM-DD",    // 默认今天
         "train_ratio": 0.6,
         "val_ratio": 0.2,
     }
     """
     try:
+        # 动态默认日期：最近5年
+        today = datetime.date.today()
+        default_start = (today - datetime.timedelta(days=365 * 5)).isoformat()
+        default_end = today.isoformat()
         result = walk_forward_validation(
             symbol=payload.get("symbol", ""),
             asset_type=payload.get("asset_type", "stock"),
             strategy_code=payload.get("strategy_code", ""),
-            start_date=payload.get("start_date", "2020-01-01"),
-            end_date=payload.get("end_date", "2024-12-31"),
+            start_date=payload.get("start_date", default_start),
+            end_date=payload.get("end_date", default_end),
             train_ratio=payload.get("train_ratio", 0.6),
             val_ratio=payload.get("val_ratio", 0.2),
             initial_cash=payload.get("initial_cash", 100000),

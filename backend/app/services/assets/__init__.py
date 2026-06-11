@@ -1,0 +1,56 @@
+"""真实资产标的映射包.
+
+所有标的数据均来自akshare/东方财富，标明来源。
+"""
+
+from .symbol_mappings import (
+    SECTOR_ETF_MAP,
+    SECTOR_STOCK_MAP,
+    BOND_ETF_MAP,
+    COMMODITY_ETF_MAP,
+    CASH_FUND_MAP,
+    BACKTEST_PERIODS,
+    BUY_HOLD_BENCHMARK,
+    get_sector_etf,
+    get_sector_stocks,
+    get_bond_etf,
+    get_bond_etfs_by_risk,
+    get_commodity_etf,
+    get_commodity_etfs_by_risk,
+    get_cash_fund,
+    get_cash_funds_by_risk,
+    get_benchmark_symbol,
+    get_all_bond_symbols,
+    get_all_commodity_symbols,
+    get_all_cash_symbols,
+    select_bonds_by_saa_weight,
+    select_commodities_by_saa_weight,
+    select_cash_by_saa_weight,
+    get_all_sources,
+)
+
+__all__ = [
+    "SECTOR_ETF_MAP",
+    "SECTOR_STOCK_MAP",
+    "BOND_ETF_MAP",
+    "COMMODITY_ETF_MAP",
+    "CASH_FUND_MAP",
+    "BACKTEST_PERIODS",
+    "BUY_HOLD_BENCHMARK",
+    "get_sector_etf",
+    "get_sector_stocks",
+    "get_bond_etf",
+    "get_bond_etfs_by_risk",
+    "get_commodity_etf",
+    "get_commodity_etfs_by_risk",
+    "get_cash_fund",
+    "get_cash_funds_by_risk",
+    "get_benchmark_symbol",
+    "get_all_bond_symbols",
+    "get_all_commodity_symbols",
+    "get_all_cash_symbols",
+    "select_bonds_by_saa_weight",
+    "select_commodities_by_saa_weight",
+    "select_cash_by_saa_weight",
+    "get_all_sources",
+]

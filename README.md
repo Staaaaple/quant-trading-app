@@ -1,6 +1,10 @@
-# Quant Trading App
+# QuantEvo — 策略即有机体的量化投资平台
 
-一个将**策略视为有机体**的量化交易平台。不只是回测和交易，Quant Trading App 用生物学的视角审视你的策略群落——测序它们的基因、追踪它们的家族、测量它们的代谢、预测它们的寿命。
+> **项目名称**: QuantEvo（原 Quant Trading App）  
+> **版本**: v2.0  
+> **更新日期**: 2026-06-11
+
+一个将**策略视为有机体**的量化投资平台。不只是回测和交易，QuantEvo 用生物学的视角审视你的策略群落——测序它们的基因、追踪它们的家族、测量它们的代谢、预测它们的寿命。
 
 > "策略不是代码，是生态。"
 
@@ -73,15 +77,29 @@
 
 > 详细设计见 [docs/sync-scheme.md](./docs/sync-scheme.md)
 
+### 投资者画像 & 智能组合（v2.0 新增）
+- **15 题问卷**：风险承受能力、投资经验、收益预期、行为偏好
+- **五层市场评估**：估值面、技术面、情绪面、宏观面、资金流向
+- **Hybrid 组合引擎**：SAA 战略配置 + TAA 战术调整，生成个性化投资组合
+- **全链路服务**：画像 → 市场信号 → 组合推荐 → 回测验证 → 今日操作
+
+### RAG 知识库（v2.0 新增）
+- **论文知识库**：量化投资经典论文结构化存储
+- **策略模板库**：内置双均线、RSI、布林带等核心模板
+- **向量检索**：基于 FAISS + Sentence Transformers 的语义搜索
+- **智能问答**：结合本地 LLM 的投资知识问答
+
 ---
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
-| **前端** | Vue 3 + Vite + TypeScript + Pinia + Vue Router + ECharts + Vue I18n + CodeMirror |
+| **前端** | Vue 3 + Vite + TypeScript + Pinia + Vue Router + ECharts + Vue I18n + CodeMirror + Tailwind CSS |
 | **后端** | FastAPI + SQLAlchemy + SQLite + APScheduler + Pydantic |
 | **量化引擎** | [akquant](https://github.com/akfamily/akquant)（回测/模拟盘）+ [akshare](https://www.akshare.xyz/)（数据获取）|
+| **本地 LLM** | [MLX](https://github.com/ml-explore/mlx) + [Qwen3-14B-MLX-4bit](https://huggingface.co/Qwen/Qwen3-14B-MLX-4bit)（Apple Silicon）|
+| **向量检索** | FAISS + Sentence Transformers |
 | **测试** | pytest + httpx |
 
 ---
@@ -107,19 +125,29 @@ quant-trading-app/
 │   │   ├── api/v1/        # API 路由与端点
 │   │   ├── core/          # 配置项
 │   │   ├── db/            # 数据库模型与会话
-│   │   ├── models/        # SQLAlchemy ORM 模型
+│   │   ├── models/        # SQLAlchemy ORM 模型（20+ 张表）
 │   │   │   ├── strategy.py
 │   │   │   ├── risk_strategy.py
 │   │   │   ├── strategy_flow.py
-│   │   │   └── strategy_dna.py       # 策略 DNA 与系统发育模型
+│   │   │   ├── strategy_dna.py       # 策略 DNA 与系统发育
+│   │   │   ├── investor_profile.py   # 投资者画像
+│   │   │   ├── portfolio.py          # 投资组合
+│   │   │   ├── market_signal.py      # 市场信号
+│   │   │   └── rag_knowledge.py      # RAG 知识库
 │   │   ├── schemas/       # Pydantic 数据校验
 │   │   ├── services/      # 业务逻辑层
 │   │   └── main.py        # 应用入口
 │   ├── tests/
-│   └── requirements.txt
+│   ├── requirements.txt
+│   ├── .env.example       # 环境变量模板
+│   └── seed_strategies.py # 策略种子数据
 ├── docs/                  # 设计文档
+│   ├── architecture-v2.md # 架构文档
+│   ├── user-journey-v2.md # 用户旅程
 │   └── sync-scheme.md     # 真实持仓同步方案
+├── docker-compose.yml     # Docker 生产部署
 ├── start.py               # 一键启动前后端开发环境
+├── RUNTIME_REQUIREMENTS.md # 运行环境要求文档
 └── package.json
 ```
 
@@ -130,7 +158,10 @@ quant-trading-app/
 ### 环境要求
 
 - **Node.js**: `^20.19.0 || >=22.12.0`
-- **Python**: `>=3.10`
+- **Python**: `>=3.10`（推荐 3.11）
+- **Apple Silicon Mac**: 可选，用于本地 LLM 推理（推荐 16GB+ 内存）
+
+完整依赖和配置说明见 [RUNTIME_REQUIREMENTS.md](./RUNTIME_REQUIREMENTS.md)。
 
 ### 安装依赖
 
@@ -142,6 +173,24 @@ cd frontend && npm install
 cd backend
 pip install -r requirements.txt
 ```
+
+### 配置环境变量
+
+```bash
+cd backend
+cp .env.example .env
+# 编辑 .env，配置 LLM 路径等
+```
+
+### 下载 LLM 模型（Apple Silicon 推荐）
+
+```bash
+pip install huggingface-hub
+huggingface-cli download Qwen/Qwen3-14B-MLX-4bit \
+  --local-dir ~/.cache/huggingface/hub/models--Qwen--Qwen3-14B-MLX-4bit
+```
+
+更多模型见 [Hugging Face Qwen 模型库](https://huggingface.co/Qwen)。
 
 ### 启动开发环境
 
@@ -167,6 +216,20 @@ npm run dev
 
 ---
 
+## 生产部署
+
+```bash
+# Docker 一键部署
+./deploy.sh
+
+# 或手动
+sudo docker-compose up -d --build
+```
+
+详细部署说明见 [DEPLOY.md](./DEPLOY.md)。
+
+---
+
 ## API 文档
 
 启动后端后访问：
@@ -182,6 +245,10 @@ npm run dev
 | 模拟盘 | `/api/v1/paper-trading` |
 | 持仓同步 | `/api/v1/sync` |
 | 策略 DNA / 生态 | `/api/v1/dna` |
+| 投资者画像 | `/api/v1/profiles` |
+| 市场信号 | `/api/v1/market-signals` |
+| 投资组合 | `/api/v1/portfolios` |
+| 知识库 | `/api/v1/rag` |
 | 健康检查 | `/health` |
 
 ---
@@ -267,6 +334,10 @@ pytest
 | `API_V1_STR` | `/api/v1` | API 前缀 |
 | `BACKEND_CORS_ORIGINS` | `*` | 跨域来源 |
 | `SQLITE_DB_PATH` | `./quant_trading.db` | 数据库路径 |
+| `LLM_BACKEND` | `mlx` | LLM 后端：mlx / openai / mock |
+| `EMBEDDING_BACKEND` | `sentence_transformers` | Embedding 后端 |
+
+完整配置说明见 [RUNTIME_REQUIREMENTS.md#四环境变量配置](./RUNTIME_REQUIREMENTS.md#四环境变量配置)。
 
 ---
 
@@ -278,6 +349,16 @@ pytest
 4. **删除保护**：被策略流引用的子策略不允许删除
 5. **不侵入 akquant 内部状态**：模拟盘与真实持仓采用双账本并行
 6. **本地优先**：SQLite + 本地文件存储，零外部依赖，开箱即用
+7. **Apple Silicon 原生**：MLX 框架本地 LLM 推理，无需 Docker/CUDA
+
+---
+
+## 相关资源
+
+- **LLM 模型**: [Hugging Face Qwen 模型库](https://huggingface.co/Qwen)
+- **量化数据源**: [AKShare 文档](https://www.akshare.xyz/)
+- **回测引擎**: [akquant GitHub](https://github.com/akfamily/akquant)
+- **MLX 框架**: [MLX GitHub](https://github.com/ml-explore/mlx)
 
 ---
 

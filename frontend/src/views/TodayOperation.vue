@@ -33,48 +33,80 @@ interface DailyPush {
   priority?: string
 }
 
-// Mock data for demonstration
+// 从 sessionStorage 获取组合数据生成今日操作
 const pushData = ref<DailyPush>({
-  has_operation: true,
-  title: '今日操作提示 (2个信号)',
+  has_operation: false,
+  title: '今日操作提示',
   date: new Date().toISOString().split('T')[0],
-  operations: [
-    {
-      symbol: '510300',
-      name: '沪深300ETF',
-      action: 'buy',
-      action_cn: '买入',
-      reason: '双均线策略触发金叉信号，且组合股票仓位偏离目标',
-      strategy_name: '双均线趋势',
-      confidence: 0.82,
-      suggested_amount: 5000,
-      teaching_card: {
-        title: '什么是金叉？',
-        content: '短期均线上穿长期均线，通常被视为买入信号。表明短期趋势转强。',
-      },
-    },
-    {
-      symbol: '518880',
-      name: '黄金ETF',
-      action: 'sell',
-      action_cn: '卖出',
-      reason: '趋势跟踪策略触发死叉信号，黄金短期承压',
-      strategy_name: '趋势跟踪',
-      confidence: 0.75,
-      suggested_amount: 3000,
-      teaching_card: {
-        title: '什么是死叉？',
-        content: '短期均线下穿长期均线，通常被视为卖出信号。表明短期趋势转弱。',
-      },
-    },
-  ],
-  holdings: [
-    { symbol: '510500', name: '中证500ETF', reason: '策略未触发信号，继续持有' },
-    { symbol: '511010', name: '国债ETF', reason: '无明确信号，继续持有' },
-  ],
-  market_brief: '当前市场处于复苏期，综合评分58%，整体中性偏乐观',
+  operations: [],
+  holdings: [],
+  market_brief: '加载中...',
   priority: 'normal',
 })
+
+// 加载数据
+function loadData() {
+  const stored = sessionStorage.getItem('latest_portfolio')
+  const signalStored = sessionStorage.getItem('latest_market_signal')
+
+  // 市场简报
+  if (signalStored) {
+    try {
+      const signal = JSON.parse(signalStored)
+      pushData.value.market_brief = `当前市场处于${signal.market_cycle || '未知'}期，综合评分${signal.composite_score || 0}%，整体${signal.market_mood || '中性'}`
+    } catch (e) {
+      pushData.value.market_brief = '暂无市场信号数据，请返回首页更新'
+    }
+  }
+
+  // 持仓和操作建议
+  if (stored) {
+    try {
+      const portfolio = JSON.parse(stored)
+      const bindings = portfolio?.portfolio?.bindings || []
+
+      // 生成 holdings（所有绑定标的）
+      pushData.value.holdings = bindings.map((b: any) => ({
+        symbol: b.symbol,
+        name: b.name || b.symbol,
+        reason: b.reasoning || '策略绑定持仓',
+      }))
+
+      // 生成 operations（基于回测结果的买入/卖出建议）
+      const ops: Operation[] = []
+      bindings.forEach((b: any) => {
+        // 简化逻辑：如果回测通过且有正收益，建议买入/持有
+        const bt = b.backtest_result
+        if (bt && bt.return > 0 && bt.passed_benchmark) {
+          ops.push({
+            symbol: b.symbol,
+            name: b.name || b.symbol,
+            action: 'buy',
+            action_cn: '买入',
+            reason: `${b.strategy_name}回测通过，策略收益${(bt.return * 100).toFixed(1)}%，跑赢基准`,
+            strategy_name: b.strategy_name || '未命名策略',
+            confidence: bt.win_rate || 0.5,
+            suggested_amount: 5000,
+          })
+        }
+      })
+
+      pushData.value.operations = ops
+      pushData.value.has_operation = ops.length > 0
+      pushData.value.title = ops.length > 0 ? `今日操作提示 (${ops.length}个信号)` : '今日持有'
+    } catch (e) {
+      console.error('Failed to parse portfolio:', e)
+      pushData.value.holdings = []
+      pushData.value.market_brief = '数据解析失败，请返回首页重新生成组合'
+    }
+  } else {
+    // 无数据时的默认状态
+    pushData.value.holdings = []
+    pushData.value.market_brief = '暂无组合数据，请返回首页生成组合'
+  }
+}
+
+loadData()
 
 const confirmedOps = ref<Set<string>>(new Set())
 const ignoredOps = ref<Set<string>>(new Set())

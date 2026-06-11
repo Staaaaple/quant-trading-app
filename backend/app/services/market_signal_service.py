@@ -104,19 +104,23 @@ def _fetch_macro_data() -> dict[str, Any]:
         print(f"M2 fetch error: {e}")
 
     try:
-        # LPR利率
+        # LPR利率（列名已从 LPR_1Y 变为 LPR1Y，且早期行为 NaN）
         lpr_df = ak.macro_china_lpr()
         if not lpr_df.empty:
-            latest_lpr = float(lpr_df.iloc[0].get("LPR_1Y", lpr_df.iloc[0].get(lpr_df.columns[1], 3.5)))
-            prev_lpr = float(lpr_df.iloc[1].get("LPR_1Y", lpr_df.iloc[1].get(lpr_df.columns[1], 3.5)))
-            result["lpr_1y"] = round(latest_lpr, 2)
-            result["lpr_prev"] = round(prev_lpr, 2)
-            if latest_lpr < prev_lpr - 0.05:
-                result["interest_rate"] = "下行"
-            elif latest_lpr > prev_lpr + 0.05:
-                result["interest_rate"] = "上行"
-            else:
-                result["interest_rate"] = "持平"
+            # 兼容新旧列名，取最新有效值
+            col = "LPR1Y" if "LPR1Y" in lpr_df.columns else "LPR_1Y"
+            valid = lpr_df[lpr_df[col].notna()].sort_values("TRADE_DATE", ascending=False)
+            if len(valid) >= 2:
+                latest_lpr = float(valid.iloc[0][col])
+                prev_lpr = float(valid.iloc[1][col])
+                result["lpr_1y"] = round(latest_lpr, 2)
+                result["lpr_prev"] = round(prev_lpr, 2)
+                if latest_lpr < prev_lpr - 0.05:
+                    result["interest_rate"] = "下行"
+                elif latest_lpr > prev_lpr + 0.05:
+                    result["interest_rate"] = "上行"
+                else:
+                    result["interest_rate"] = "持平"
     except Exception as e:
         print(f"LPR fetch error: {e}")
 
@@ -134,20 +138,26 @@ def _fetch_macro_data() -> dict[str, Any]:
         print(f"Social financing fetch error: {e}")
 
     try:
-        # 失业率
+        # 失业率（接口不稳定，失败则跳过）
         unemployment_df = ak.macro_china_urban_unemployment()
         if not unemployment_df.empty:
             latest_unemployment = float(unemployment_df.iloc[0].get("全国城镇调查失业率", unemployment_df.iloc[0].get(unemployment_df.columns[1], 5.0)))
             result["unemployment_rate"] = round(latest_unemployment, 2)
     except Exception as e:
-        print(f"Unemployment fetch error: {e}")
+        # 该接口经常 401/JSON 解析失败，静默忽略
+        pass
 
     try:
-        # 工业企业利润
-        profit_df = ak.macro_china_industrial_profit()
+        # 工业企业利润 — 使用工业增加值同比替代（原接口已删除）
+        profit_df = ak.macro_china_industrial_production_yoy()
         if not profit_df.empty:
-            latest_profit_yoy = float(profit_df.iloc[0].get("规模以上工业企业利润总额-同比增长", profit_df.iloc[0].get(profit_df.columns[1], 0)))
-            result["industrial_profit_yoy"] = round(latest_profit_yoy, 2)
+            # 按日期倒序取最新一条有效数值
+            profit_df_sorted = profit_df.sort_values("日期", ascending=False)
+            for _, row in profit_df_sorted.iterrows():
+                val = row.get("今值")
+                if pd.notna(val):
+                    result["industrial_profit_yoy"] = round(float(val), 2)
+                    break
     except Exception as e:
         print(f"Industrial profit fetch error: {e}")
 
@@ -266,8 +276,8 @@ def _fetch_internal_data() -> dict[str, Any]:
     }
 
     try:
-        # 沪深300指数获取最新数据
-        index_df = ak.index_zh_a_hist(symbol="000300", period="daily", start_date="20260101", end_date="20260630")
+        # 沪深300指数获取最新数据 — 使用中证指数数据源替代
+        index_df = ak.stock_zh_index_hist_csindex(symbol="000300")
         if not index_df.empty:
             latest_close = float(index_df.iloc[-1]["收盘"])
             # 简化：用近20日涨跌幅判断情绪

@@ -102,3 +102,29 @@ export function generateWeeklyReport(payload: WeeklyReportPayload) {
 export function getLatestWeeklyReport(userId: number) {
   return client.get(`/fullchain/weekly-report/latest/${userId}`)
 }
+
+// ── 寿命监控 ──
+
+export function runLifespanCheck() {
+  return client.post('/fullchain/lifespan/run-check')
+}
+
+export function getLifespanTrend(strategyId: string, months?: number) {
+  const params = months ? `?months=${months}` : ''
+  return client.get(`/fullchain/lifespan/trend/${strategyId}${params}`)
+}
+
+export function getLifespanAlerts() {
+  return client.get('/fullchain/lifespan/alerts')
+}
+
+export function getPortfolioLifespan(portfolioId: string) {
+  return client.get(`/fullchain/lifespan/portfolio/${portfolioId}`)
+}
+
+export function getReplacementStrategies(payload: {
+  strategy_id: string
+  top_k?: number
+}) {
+  return client.post('/fullchain/lifespan/replacement', payload)
+}

@@ -100,6 +100,15 @@ async function loadDashboardData(p: InvestorProfile) {
       profile_vector: profileVector,
       market_signal: marketSignal,
     })
+
+    // 存储到 sessionStorage，供 PortfolioBuilder 使用
+    if (portfolio.value) {
+      sessionStorage.setItem('latest_portfolio', JSON.stringify(portfolio.value))
+    }
+    // 同时存储市场信号
+    if (signal.value) {
+      sessionStorage.setItem('latest_market_signal', JSON.stringify(signal.value))
+    }
   } catch (e) {
     console.error('Failed to design portfolio:', e)
   } finally {
@@ -177,7 +186,17 @@ onUnmounted(() => {
     <!-- Content -->
     <div class="home-content">
       <!-- Loading -->
-      <div v-if="loading" class="loading-state">加载中...</div>
+      <div v-if="loading" class="loading-state">
+        <div class="loading-spinner"></div>
+        <p>加载中...</p>
+      </div>
+
+      <!-- Designing Portfolio -->
+      <div v-else-if="designing" class="loading-state designing">
+        <div class="loading-spinner"></div>
+        <p>AI 正在生成组合配置...</p>
+        <p class="loading-sub">RAG 质检引擎运行中</p>
+      </div>
 
       <!-- ========== EMPTY STATE ========== -->
       <template v-else-if="!hasProfile">
@@ -543,7 +562,18 @@ onUnmounted(() => {
   width: 100%; display: flex; flex-direction: column; gap: 14px;
   position: relative; z-index: 1;
 }
-.loading-state { text-align: center; padding: 60px 0; color: #a3a3a3; font-size: 0.9rem; }
+.loading-state { text-align: center; padding: 80px 20px; color: #a3a3a3; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.loading-state .loading-spinner {
+  width: 40px; height: 40px;
+  border: 3px solid #e5e5e5;
+  border-top-color: #171717;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.loading-state p { font-size: 1rem; font-weight: 500; color: #525252; margin: 0; }
+.loading-state .loading-sub { font-size: 0.78rem; color: #a3a3a3; }
+.loading-state.designing .loading-spinner { border-top-color: #22c55e; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ========== EMPTY STATE ========== */
 .hero-empty { text-align: center; padding: 20px 0 8px; position: relative; }
