@@ -18,9 +18,10 @@ function toFrontendReport(report: Record<string, any>) {
   }
 }
 
-// 内存中保存已生成的报告，初始为空（与后端行为一致）
-let generatedDaily: Record<string, any> | null = null
-let generatedWeekly: Record<string, any> | null = null
+// 内存中保存已生成的报告，初始即使用 Demo 数据，进入页面可直接展示
+const today = new Date().toISOString().split('T')[0]
+let generatedDaily: Record<string, any> | null = { ...DEMO_DAILY_REPORT, report_date: today }
+let generatedWeekly: Record<string, any> | null = { ...DEMO_WEEKLY_REPORT, report_date: today }
 
 export function generateMarketReport(payload: MarketReportPayload) {
   const type = payload.report_type === 'weekly' ? 'weekly' : 'daily'
