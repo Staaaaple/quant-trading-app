@@ -7,6 +7,7 @@ import { marketSignalApi, type MarketSignalLatest } from '@/api/marketSignal'
 import { portfolioApi, type PortfolioDesignResult } from '@/api/portfolio'
 import UserSwitcher from '@/components/UserSwitcher.vue'
 import LegalNotice from '@/components/LegalNotice.vue'
+import LandingView from './LandingView.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -220,100 +221,7 @@ onUnmounted(() => {
 
       <!-- ========== EMPTY STATE ========== -->
       <template v-else-if="!hasProfile">
-        <div class="hero-empty">
-          <div class="hero-glow"></div>
-          <div class="hero-visual">
-            <svg viewBox="0 0 400 260" class="hero-svg">
-              <defs>
-                <linearGradient id="coneGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#262626"/>
-                  <stop offset="100%" stop-color="#0a0a0a"/>
-                </linearGradient>
-                <linearGradient id="barGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stop-color="#525252"/>
-                  <stop offset="100%" stop-color="#171717"/>
-                </linearGradient>
-                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="3" result="blur"/>
-                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-              </defs>
-              <ellipse cx="200" cy="210" rx="130" ry="28" fill="none" stroke="#262626" stroke-width="1"/>
-              <ellipse cx="200" cy="200" rx="110" ry="23" fill="none" stroke="#333" stroke-width="1"/>
-              <ellipse cx="200" cy="190" rx="90" ry="18" fill="url(#coneGrad)" stroke="#404040" stroke-width="1"/>
-              <path d="M155 190 L200 85 L245 190 Z" fill="#141414" stroke="#525252" stroke-width="1.5" stroke-linejoin="round"/>
-              <path d="M177 190 L200 125 L223 190 Z" fill="#1f1f1f" opacity="0.5"/>
-              <line x1="200" y1="85" x2="200" y2="55" stroke="#737373" stroke-width="1.5" stroke-linecap="round"/>
-              <circle cx="200" cy="52" r="3" fill="#a3a3a3" filter="url(#glow)">
-                <animate attributeName="cy" values="52;48;52" dur="2.5s" repeatCount="indefinite"/>
-                <animate attributeName="opacity" values="1;0.5;1" dur="2.5s" repeatCount="indefinite"/>
-              </circle>
-              <rect x="65" y="130" width="10" height="55" rx="5" fill="url(#barGrad)" opacity="0.7">
-                <animate attributeName="height" values="55;75;55" dur="3.2s" repeatCount="indefinite"/>
-                <animate attributeName="y" values="130;110;130" dur="3.2s" repeatCount="indefinite"/>
-              </rect>
-              <rect x="82" y="110" width="10" height="75" rx="5" fill="url(#barGrad)" opacity="0.5">
-                <animate attributeName="height" values="75;95;75" dur="2.8s" repeatCount="indefinite"/>
-                <animate attributeName="y" values="110;90;110" dur="2.8s" repeatCount="indefinite"/>
-              </rect>
-              <rect x="308" y="120" width="10" height="65" rx="5" fill="url(#barGrad)" opacity="0.6">
-                <animate attributeName="height" values="65;85;65" dur="3.5s" repeatCount="indefinite"/>
-                <animate attributeName="y" values="120;100;120" dur="3.5s" repeatCount="indefinite"/>
-              </rect>
-              <rect x="325" y="140" width="10" height="45" rx="5" fill="url(#barGrad)" opacity="0.4">
-                <animate attributeName="height" values="45;65;45" dur="2.5s" repeatCount="indefinite"/>
-                <animate attributeName="y" values="140;120;140" dur="2.5s" repeatCount="indefinite"/>
-              </rect>
-              <line x1="95" y1="165" x2="140" y2="180" stroke="#333" stroke-width="0.8" stroke-dasharray="3 3"/>
-              <line x1="260" y1="180" x2="305" y2="165" stroke="#333" stroke-width="0.8" stroke-dasharray="3 3"/>
-            </svg>
-          </div>
-
-          <h1 class="hero-title">
-            <span class="gradient-text">构建你的投资组合</span>
-          </h1>
-          <p class="hero-desc">基于市场五层信号模型，AI 为你定制策略配置</p>
-        </div>
-
-        <button class="btn-primary" @click="goProfile">
-          <span>开始画像</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </button>
-
-        <p class="subline">
-          <span class="pulse-dot"></span>
-          本周已有 <strong>147</strong> 位用户完成画像
-        </p>
-
-        <div class="feature-list">
-          <div class="feature-card" @click="goProfile">
-            <div class="feature-num">01</div>
-            <div class="feature-line"></div>
-            <div class="feature-content">
-              <div class="feature-title">投资者画像</div>
-              <div class="feature-desc">15 维向量刻画风险偏好与行为特征</div>
-            </div>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </div>
-          <div class="feature-card">
-            <div class="feature-num">02</div>
-            <div class="feature-line"></div>
-            <div class="feature-content">
-              <div class="feature-title">组合生成</div>
-              <div class="feature-desc">Hybrid 引擎动态匹配策略与标的</div>
-            </div>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </div>
-          <div class="feature-card">
-            <div class="feature-num">03</div>
-            <div class="feature-line"></div>
-            <div class="feature-content">
-              <div class="feature-title">全链路服务</div>
-              <div class="feature-desc">从画像到调仓的全程量化陪伴</div>
-            </div>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </div>
-        </div>
+        <LandingView @start="goProfile" />
       </template>
 
       <!-- ========== DASHBOARD ========== -->

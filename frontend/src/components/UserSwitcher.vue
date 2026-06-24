@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { profileApi } from '@/api/profile'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -69,6 +70,18 @@ function resetDemoAnimation() {
   window.location.reload()
 }
 
+/** 重置当前用户画像，返回首页空状态 */
+async function resetProfile() {
+  isOpen.value = false
+  try {
+    await profileApi.deleteMine()
+    window.location.href = '/'
+  } catch (e) {
+    console.error('Failed to reset profile:', e)
+    alert('重置画像失败')
+  }
+}
+
 function openCreateModal() {
   showCreateModal.value = true
   isOpen.value = false
@@ -134,6 +147,13 @@ onMounted(() => {
             <path d="M12 5v14M5 12h14"/>
           </svg>
           新建用户
+        </button>
+        <button class="reset-profile-btn" @click="resetProfile">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          重置画像
         </button>
         <button
           v-if="userStore.isDemo"
@@ -389,6 +409,29 @@ onMounted(() => {
   opacity: 1;
   color: #6366f1;
   background: #f5f3ff;
+}
+
+.reset-profile-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px dashed rgba(0,0,0,0.12);
+  border-radius: 12px;
+  background: transparent;
+  color: #525252;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.reset-profile-btn:hover {
+  border-color: #171717;
+  color: #171717;
+  background: #fafafa;
 }
 
 .overlay {

@@ -1,6 +1,9 @@
 import { delay } from './mock/utils'
 import { DEMO_QUESTIONS, DEMO_INVESTOR_PROFILE } from './mock/demoData'
 
+/** 演示模式下是否已删除画像，用于首页空状态/仪表盘切换 */
+let _profileDeleted = false
+
 export interface Question {
   id: string
   category: string
@@ -98,8 +101,18 @@ export const profileApi = {
       labels: { risk_label: '稳健型', time_horizon_label: '中期', experience_label: '中等' } as ProfileLabels,
     })),
   create: (answers: Record<string, string | string[]>) =>
-    delay(500).then(() => ({ ...DEMO_INVESTOR_PROFILE, answers_json: answers } as InvestorProfile)),
-  getMine: () => delay(300).then(() => DEMO_INVESTOR_PROFILE as InvestorProfile),
+    delay(500).then(() => {
+      _profileDeleted = false
+      return { ...DEMO_INVESTOR_PROFILE, answers_json: answers } as InvestorProfile
+    }),
+  getMine: () => delay(300).then(() => _profileDeleted ? null : DEMO_INVESTOR_PROFILE as InvestorProfile),
   update: (_profileId: number, answers: Record<string, string | string[]>) =>
     delay(500).then(() => ({ ...DEMO_INVESTOR_PROFILE, answers_json: answers } as InvestorProfile)),
+  deleteMine: () => delay(400).then(() => {
+    _profileDeleted = true
+    sessionStorage.removeItem('latest_portfolio')
+    localStorage.removeItem('portfolio_task_id')
+    return { success: true }
+  }),
+  hasProfile: () => delay(100).then(() => !_profileDeleted),
 }
