@@ -40,10 +40,10 @@ export const backtestApi = {
     return delay(300).then(() => bt as Backtest)
   },
   create(payload: BacktestCreatePayload): Promise<Backtest> {
-    return delay(500).then(() => ({ ...DEMO_BACKTEST, ...payload } as Backtest))
+    return delay(150).then(() => ({ ...DEMO_BACKTEST, ...payload } as Backtest))
   },
   run(_backtest_id: string, payload: BacktestRunPayload): Promise<Backtest> {
-    return delay(800).then(() => ({ ...DEMO_BACKTEST, ...payload } as Backtest))
+    return delay(250).then(() => ({ ...DEMO_BACKTEST, ...payload } as Backtest))
   },
   remove(_backtest_id: string): Promise<void> {
     return delay(300).then(() => undefined)
