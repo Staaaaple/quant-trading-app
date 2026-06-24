@@ -1,5 +1,5 @@
 import { delay } from './mock/utils'
-import { DEMO_BACKTEST } from './mock/demoData'
+import { DEMO_BACKTEST, DEMO_BACKTESTS } from './mock/demoData'
 
 export interface Backtest {
   id: number
@@ -33,10 +33,11 @@ export interface BacktestRunPayload {
 
 export const backtestApi = {
   list(): Promise<Backtest[]> {
-    return delay(300).then(() => [DEMO_BACKTEST as Backtest])
+    return delay(300).then(() => DEMO_BACKTESTS as Backtest[])
   },
-  get(_backtest_id: string): Promise<Backtest> {
-    return delay(300).then(() => DEMO_BACKTEST as Backtest)
+  get(backtest_id: string): Promise<Backtest> {
+    const bt = DEMO_BACKTESTS.find((b) => b.backtest_id === backtest_id) || DEMO_BACKTEST
+    return delay(300).then(() => bt as Backtest)
   },
   create(payload: BacktestCreatePayload): Promise<Backtest> {
     return delay(500).then(() => ({ ...DEMO_BACKTEST, ...payload } as Backtest))

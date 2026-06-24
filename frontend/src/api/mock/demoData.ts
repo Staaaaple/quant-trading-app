@@ -191,18 +191,107 @@ export const DEMO_MARKET_SIGNAL: Record<string, any> = {
   },
 }
 
-// ── 演示回测指标 ──
-export const DEMO_BACKTEST_METRICS: Record<string, any> = {
-  total_return: 0.145,
-  annual_return: 0.058,
-  annualized_return: 0.058,
-  sharpe_ratio: 0.98,
-  max_drawdown: 0.06,
-  volatility: 0.12,
-  trade_count: 8,
-  win_rate: 0.62,
-  avg_return_per_trade: 0.0073,
+// ── 策略家族映射 ──
+const STRATEGY_FAMILY_MAP: Record<string, { family_id: string; family_name: string }> = {
+  demo_s1: { family_id: 'family_trend', family_name: '趋势家族' },
+  demo_s2: { family_id: 'family_mr', family_name: '均值回归家族' },
+  demo_s3: { family_id: 'family_value', family_name: '价值家族' },
+  demo_s4: { family_id: 'family_cycle', family_name: '周期家族' },
+  demo_s5: { family_id: 'family_def', family_name: '防御家族' },
+  demo_s6: { family_id: 'family_fixed', family_name: '固定收益家族' },
+  demo_s7: { family_id: 'family_cash', family_name: '现金家族' },
+  demo_s8: { family_id: 'family_commodity', family_name: '商品家族' },
+  demo_s9: { family_id: 'family_growth', family_name: '成长家族' },
 }
+
+const STRATEGY_NAMES: Record<string, string> = {
+  demo_s1: '科技ETF趋势策略',
+  demo_s2: '消费ETF均值回归',
+  demo_s3: '银行ETF高股息',
+  demo_s4: '工业ETF周期跟踪',
+  demo_s5: '医疗ETF防御配置',
+  demo_s6: '国债ETF利率策略',
+  demo_s7: '现金管理策略',
+  demo_s8: '黄金ETF避险策略',
+  demo_s9: '天孚通信成长策略',
+}
+
+// ── 按资产类型生成差异化回测指标（与 backend get_demo_backtest_metrics 一致） ──
+function makeMetrics(seed: string, assetClass: string): Record<string, any> {
+  // 确定性伪随机
+  function _seedFloat(s: string, low: number, high: number): number {
+    let h = 0
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) - h + s.charCodeAt(i)) | 0
+    }
+    h = Math.abs(h)
+    return low + (h % 10000) / 10000 * (high - low)
+  }
+
+  let baseReturn: number, volatility: number, maxDd: number
+
+  if (assetClass === 'bond') {
+    baseReturn = _seedFloat(seed + '_ret', 0.020, 0.045)
+    volatility = _seedFloat(seed + '_vol', 0.020, 0.040)
+    maxDd = _seedFloat(seed + '_dd', 0.010, 0.030)
+  } else if (assetClass === 'cash') {
+    baseReturn = _seedFloat(seed + '_ret', 0.005, 0.020)
+    volatility = _seedFloat(seed + '_vol', 0.001, 0.005)
+    maxDd = 0.0
+  } else if (assetClass === 'commodity') {
+    baseReturn = _seedFloat(seed + '_ret', 0.030, 0.080)
+    volatility = _seedFloat(seed + '_vol', 0.100, 0.160)
+    maxDd = _seedFloat(seed + '_dd', 0.050, 0.120)
+  } else if (assetClass === 'stock') {
+    baseReturn = _seedFloat(seed + '_ret', -0.050, 0.150)
+    volatility = _seedFloat(seed + '_vol', 0.220, 0.380)
+    maxDd = _seedFloat(seed + '_dd', 0.100, 0.250)
+  } else {
+    // ETF
+    baseReturn = _seedFloat(seed + '_ret', 0.020, 0.100)
+    volatility = _seedFloat(seed + '_vol', 0.120, 0.220)
+    maxDd = _seedFloat(seed + '_dd', 0.060, 0.150)
+  }
+
+  const sharpe = volatility > 0 ? baseReturn / volatility : 0.0
+  const winRate = _seedFloat(seed + '_wr', 0.45, 0.70)
+  const tradeCount = Math.floor(_seedFloat(seed + '_tc', 5, 25))
+  const totalReturn = baseReturn * _seedFloat(seed + '_tr', 1.5, 2.5)
+  const sortino = sharpe * 1.15
+  const calmar = maxDd > 0 ? baseReturn / maxDd : baseReturn * 10
+  const exposureTime = _seedFloat(seed + '_exp', 0.40, 0.85)
+
+  return {
+    total_return: Math.round(totalReturn * 10000) / 10000,
+    annual_return: Math.round(baseReturn * 10000) / 10000,
+    annualized_return: Math.round(baseReturn * 10000) / 10000,
+    sharpe_ratio: Math.round(sharpe * 100) / 100,
+    sortino_ratio: Math.round(sortino * 100) / 100,
+    calmar_ratio: Math.round(calmar * 100) / 100,
+    max_drawdown: Math.round(maxDd * 10000) / 10000,
+    volatility: Math.round(volatility * 10000) / 10000,
+    win_rate: Math.round(winRate * 100) / 100,
+    trade_count: tradeCount,
+    avg_return_per_trade: Math.round((baseReturn / (tradeCount || 1)) * 10000) / 10000,
+    exposure_time_pct: Math.round(exposureTime * 100) / 100,
+    total_bars: 252,
+  }
+}
+
+const ASSET_CLASSES: Record<string, string> = {
+  demo_s1: 'ETF',
+  demo_s2: 'ETF',
+  demo_s3: 'ETF',
+  demo_s4: 'ETF',
+  demo_s5: 'ETF',
+  demo_s6: 'bond',
+  demo_s7: 'cash',
+  demo_s8: 'commodity',
+  demo_s9: 'stock',
+}
+
+// ── 演示回测指标（组合级，向后兼容） ──
+export const DEMO_BACKTEST_METRICS: Record<string, any> = makeMetrics('demo_portfolio', 'ETF')
 
 export const DEMO_BACKTEST_BENCHMARK_METRICS: Record<string, any> = {
   total_return: 0.1021,
@@ -211,23 +300,85 @@ export const DEMO_BACKTEST_BENCHMARK_METRICS: Record<string, any> = {
   sharpe_ratio: 0.78,
   max_drawdown: 0.14,
   volatility: 0.16,
+  win_rate: 0.55,
+  trade_count: 0,
+  exposure_time_pct: 1.0,
+  total_bars: 252,
 }
 
-// ── 演示回测 ──
-export const DEMO_BACKTEST: Record<string, any> = {
-  id: 1,
-  backtest_id: 'bt_demo_001',
-  strategy_id: 'demo_s1',
-  status: 'success',
-  start_date: '2023-01-01',
-  end_date: '2024-12-31',
-  initial_cash: 100000,
-  metrics: DEMO_BACKTEST_METRICS,
-  benchmark_metrics: DEMO_BACKTEST_BENCHMARK_METRICS,
-  logs: '回测完成：总收益 14.5%，夏普比率 0.98，最大回撤 6%',
-  created_at: now(),
-  updated_at: now(),
+// ── 演示回测列表（9条，与组合 bindings 一一对应） ──
+function makeBacktest(strategyId: string, idx: number): Record<string, any> {
+  const assetClass = ASSET_CLASSES[strategyId] || 'ETF'
+  const metrics = makeMetrics(strategyId, assetClass)
+  const startDate = '2023-01-01'
+  const endDate = '2024-12-31'
+  const backtestId = `bt_${strategyId}_2023_2024`
+
+  // 生成模拟 K 线和交易日志
+  const candles: any[] = []
+  const trades: any[] = []
+  const riskBlocks: any[] = []
+  let price = 100.0
+  const dates: string[] = []
+  for (let i = 0; i < 60; i++) {
+    const d = new Date('2023-06-01')
+    d.setDate(d.getDate() + i * 4)
+    dates.push(d.toISOString().split('T')[0])
+    const change = (Math.random() - 0.48) * (assetClass === 'stock' ? 8 : assetClass === 'commodity' ? 5 : 2)
+    const open = price
+    const close = price + change
+    const high = Math.max(open, close) + Math.random() * 2
+    const low = Math.min(open, close) - Math.random() * 2
+    candles.push({ date: dates[dates.length - 1], open: Math.round(open * 100) / 100, close: Math.round(close * 100) / 100, high: Math.round(high * 100) / 100, low: Math.round(low * 100) / 100 })
+    price = close
+
+    // 偶尔插入交易
+    if (i === 10) {
+      trades.push({ entry_time: dates[dates.length - 1] + ' 10:00:00', entry_price: Math.round(open * 100) / 100, symbol: 'DEMO', quantity: 100 })
+    }
+    if (i === 35 && trades.length > 0) {
+      trades[0].exit_time = dates[dates.length - 1] + ' 14:00:00'
+      trades[0].exit_price = Math.round(close * 100) / 100
+      trades[0].pnl = Math.round((close - trades[0].entry_price) * 100 * 100) / 100
+    }
+  }
+
+  riskBlocks.push({
+    type: 'position_limit',
+    level: 'info',
+    message: '仓位控制在限制范围内',
+    timestamp: dates[dates.length - 1] + ' 15:00:00',
+  })
+
+  const logs = JSON.stringify({
+    candles: { DEMO: candles },
+    trades,
+    risk_blocks: riskBlocks,
+  })
+
+  return {
+    id: idx + 1,
+    backtest_id: backtestId,
+    strategy_id: strategyId,
+    status: 'success',
+    start_date: startDate,
+    end_date: endDate,
+    initial_cash: 100000,
+    metrics,
+    benchmark_metrics: DEMO_BACKTEST_BENCHMARK_METRICS,
+    logs,
+    created_at: (() => { const d = new Date(); d.setDate(d.getDate() - (9 - idx)); return d.toISOString(); })(),
+    updated_at: now(),
+  }
 }
+
+export const DEMO_BACKTESTS: Record<string, any>[] = [
+  'demo_s1', 'demo_s2', 'demo_s3', 'demo_s4', 'demo_s5',
+  'demo_s6', 'demo_s7', 'demo_s8', 'demo_s9',
+].map((sid, i) => makeBacktest(sid, i))
+
+// 保留单条向后兼容
+export const DEMO_BACKTEST = DEMO_BACKTESTS[0]
 
 // ── 演示市场报告：分页1 ──
 const DEMO_PAGE1: Record<string, any> = {
@@ -463,32 +614,84 @@ export const DEMO_STRATEGIES: Record<string, any>[] = [
   { id: 9, strategy_id: 'demo_s9', name: '天孚通信成长策略', type: 'growth', code: 'def handle_bar(context, bar):\n    pass', pipeline_config: { indicators: ['revenue_growth', 'margin'] }, created_at: now(), updated_at: now() },
 ]
 
-// ── 演示策略DNA ──
-export const DEMO_DNA: Record<string, any> = {
-  strategy_id: 'demo_s1',
-  feature_genes: ['ma20', 'volume_ratio', 'atr'],
-  signal_genes: ['crossover', 'momentum_break'],
-  risk_genes: ['max_drawdown_guard', 'position_limit'],
-  execution_genes: ['twap', 'slippage_control'],
-  gene_diversity_score: 0.78,
-  health_birth_score: 0.82,
-  inbreeding_coefficient: 0.15,
-  family_id: 'family_trend',
-  family_name: '趋势家族',
-  sequence_version: 'v1.0',
-  sequenced_at: now(),
-  status: 'active',
-  error_message: null,
-  metabolic_rate: 0.65,
-  niche_width: 0.70,
-  metabolic_syndrome: false,
-  metabolic_markers: ['stable'],
-  lifespan_months: 24,
-  lifespan_phase: 'mature',
-  lifespan_phase_label: '成熟期',
-  aging_velocity: 0.12,
-  lifespan_recommendations: ['定期再训练', '监控过拟合'],
+// ── 演示策略DNA（9条，与 bindings 一一对应） ──
+function makeDNA(strategyId: string): Record<string, any> {
+  const fam = STRATEGY_FAMILY_MAP[strategyId]
+  const name = STRATEGY_NAMES[strategyId]
+
+  // 确定性伪随机辅助
+  function _seedFloat(s: string, low: number, high: number): number {
+    let h = 0
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) - h + s.charCodeAt(i)) | 0
+    }
+    h = Math.abs(h)
+    return low + (h % 10000) / 10000 * (high - low)
+  }
+
+  const diversity = _seedFloat(strategyId + '_div', 0.55, 0.92)
+  const health = _seedFloat(strategyId + '_health', 65, 95)
+  const inbreeding = _seedFloat(strategyId + '_inb', 0.05, 0.35)
+  const metabolic = _seedFloat(strategyId + '_meta', 0.30, 0.85)
+  const niche = _seedFloat(strategyId + '_niche', 0.40, 0.90)
+  const lifespan = Math.floor(_seedFloat(strategyId + '_life', 6, 42))
+  const aging = _seedFloat(strategyId + '_aging', 0.05, 0.25)
+
+  const genePools: Record<string, string[]> = {
+    demo_s1: { f: ['ma20', 'volume_ratio', 'atr'], s: ['crossover', 'momentum_break'], r: ['max_drawdown_guard', 'position_limit'], e: ['twap', 'slippage_control'] },
+    demo_s2: { f: ['bollinger', 'zscore', 'mean_deviation'], s: ['reversion_signal', 'oversold_bounce'], r: ['time_stop', 'volatility_guard'], e: ['vwap', 'iceberg'] },
+    demo_s3: { f: ['dy', 'pe', 'pb'], s: ['dividend_yield_filter', 'value_screen'], r: ['sector_limit', 'concentration_guard'], e: ['twap', 'market_on_close'] },
+    demo_s4: { f: ['pmi', 'inventory_turnover', 'capacity_utilization'], s: ['cycle_phase', 'inventory_signal'], r: ['drawdown_guard', 'trend_filter'], e: ['vwap', 'participation'] },
+    demo_s5: { f: ['beta', 'volatility', 'defensive_score'], s: ['low_beta_filter', 'defensive_trigger'], r: ['max_position', 'stop_loss'], e: ['twap', 'slippage_control'] },
+    demo_s6: { f: ['yield_curve', 'duration', 'credit_spread'], s: ['rate_direction', 'curve_steepness'], r: ['duration_limit', 'credit_guard'], e: ['twap', 'market_on_close'] },
+    demo_s7: { f: ['liquidity', 'maturity'], s: ['cash_signal'], r: ['liquidity_guard'], e: ['market_on_close'] },
+    demo_s8: { f: ['usd_index', 'real_rate', 'safe_haven_score'], s: ['gold_momentum', 'risk_off_trigger'], r: ['volatility_guard', 'drawdown_guard'], e: ['vwap', 'slippage_control'] },
+    demo_s9: { f: ['revenue_growth', 'margin', 'roe'], s: ['growth_momentum', 'earnings_surprise'], r: ['position_limit', 'stop_loss'], e: ['twap', 'iceberg'] },
+  }
+
+  const genes = genePools[strategyId] || { f: ['feature_a'], s: ['signal_a'], r: ['risk_a'], e: ['exec_a'] }
+
+  return {
+    strategy_id: strategyId,
+    feature_genes: genes.f,
+    signal_genes: genes.s,
+    risk_genes: genes.r,
+    execution_genes: genes.e,
+    gene_diversity_score: Math.round(diversity * 100) / 100,
+    health_birth_score: Math.round(health * 100) / 100,
+    inbreeding_coefficient: Math.round(inbreeding * 100) / 100,
+    family_id: fam.family_id,
+    family_name: fam.family_name,
+    sequence_version: 'v1.0',
+    sequenced_at: now(),
+    status: 'active',
+    error_message: null,
+    metabolic_rate: Math.round(metabolic * 100) / 100,
+    niche_width: Math.round(niche * 100) / 100,
+    metabolic_syndrome: metabolic > 0.7 && niche < 0.5,
+    metabolic_markers: metabolic > 0.7 ? ['high_turnover'] : ['stable'],
+    lifespan_months: lifespan,
+    lifespan_phase: lifespan >= 36 ? 'young' : lifespan >= 12 ? 'mature' : lifespan >= 3 ? 'aging' : 'endangered',
+    lifespan_phase_label: lifespan >= 36 ? '年轻期' : lifespan >= 12 ? '成熟期' : lifespan >= 3 ? '衰老期' : '濒危期',
+    aging_velocity: Math.round(aging * 100) / 100,
+    lifespan_recommendations: ['定期再训练', '监控过拟合'],
+  }
 }
+
+export const DEMO_DNA_MAP: Record<string, Record<string, any>> = {
+  demo_s1: makeDNA('demo_s1'),
+  demo_s2: makeDNA('demo_s2'),
+  demo_s3: makeDNA('demo_s3'),
+  demo_s4: makeDNA('demo_s4'),
+  demo_s5: makeDNA('demo_s5'),
+  demo_s6: makeDNA('demo_s6'),
+  demo_s7: makeDNA('demo_s7'),
+  demo_s8: makeDNA('demo_s8'),
+  demo_s9: makeDNA('demo_s9'),
+}
+
+// 保留单条向后兼容（默认返回 demo_s1）
+export const DEMO_DNA = DEMO_DNA_MAP['demo_s1']
 
 // ── 演示策略流 ──
 export const DEMO_STRATEGY_FLOWS: Record<string, any>[] = [
@@ -791,57 +994,179 @@ export const DEMO_BACKTEST_ADAPTER_RESULT: Record<string, any> = {
   ],
 }
 
-// ── 演示生态系统概览 ──
-export const DEMO_ECOSYSTEM: Record<string, any> = {
-  total_strategies: 9,
-  family_count: 5,
-  avg_health_score: 0.78,
-  min_health_score: 0.65,
-  max_health_score: 0.88,
-  avg_diversity: 0.72,
-  inbreeding_risk_count: 1,
-  family_distribution: [
-    { name: '趋势家族', count: 3 },
-    { name: '均值回归家族', count: 2 },
-    { name: '防御家族', count: 2 },
-    { name: '周期家族', count: 1 },
-    { name: '成长家族', count: 1 },
-  ],
-  health_distribution: { excellent: 3, good: 4, fair: 2 },
-  low_health_strategies: [],
-  recent_strategies: [
-    { strategy_id: 'demo_s9', name: '天孚通信成长策略', health_birth_score: 0.85, gene_diversity_score: 0.80, family_name: '成长家族' },
-  ],
-  avg_metabolic_rate: 0.60,
-  avg_niche_width: 0.65,
-  syndrome_count: 0,
-  high_metabolic_strategies: [],
-  avg_lifespan: 20,
-  lifespan_distribution: { young: 3, mature: 4, aging: 2 },
-  endangered_count: 0,
-  short_lifespan_strategies: [],
-  metabolic_ranking: [
-    { strategy_id: 'demo_s1', name: '科技ETF趋势策略', metabolic_rate: 0.65, niche_width: 0.70, family_name: '趋势家族' },
-  ],
-  family_radar: [
-    { name: '趋势家族', value: [0.8, 0.7, 0.6, 0.75, 0.65] },
-  ],
-  radar_indicators: [
-    { name: '健康度', max: 1 },
-    { name: '多样性', max: 1 },
-    { name: '代谢率', max: 1 },
-    { name: '寿命', max: 1 },
-    { name: '生态位', max: 1 },
-  ],
-  family_network: {
-    nodes: [
-      { id: 'demo_s1', name: '科技ETF趋势策略', family: '趋势家族', family_id: 'family_trend', health: 0.82, lifespan: 24, metabolic_rate: 0.65, value: 1, symbolSize: 20 },
+// ── 演示生态系统概览（与 portfolio 的 9 个策略一致） ──
+function buildEcosystem(): Record<string, any> {
+  const allDNA = Object.values(DEMO_DNA_MAP)
+
+  // 家族分布
+  const familyCounts = new Map<string, number>()
+  allDNA.forEach((d) => {
+    const fam = d.family_name || '其他'
+    familyCounts.set(fam, (familyCounts.get(fam) || 0) + 1)
+  })
+  const familyDistribution = Array.from(familyCounts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+
+  // 健康度分布（使用与 EcosystemView.vue healthBucket 一致的 key）
+  const healthDistribution: Record<string, number> = {}
+  allDNA.forEach((d) => {
+    const score = d.health_birth_score
+    const bucket = score >= 80 ? '优秀(80+)' : score >= 60 ? '良好(60-80)' : '需关注(<60)'
+    healthDistribution[bucket] = (healthDistribution[bucket] || 0) + 1
+  })
+
+  // 寿命分布（使用与 EcosystemView.vue lifespanBucket 一致的 key）
+  const lifespanDistribution: Record<string, number> = {}
+  allDNA.forEach((d) => {
+    const m = d.lifespan_months
+    const bucket = m >= 36 ? '年轻(36+)' : m >= 12 ? '成熟(12-36)' : m >= 3 ? '衰老(3-12)' : '濒危(<3)'
+    lifespanDistribution[bucket] = (lifespanDistribution[bucket] || 0) + 1
+  })
+
+  const healthScores = allDNA.map((d) => d.health_birth_score)
+  const lifespans = allDNA.map((d) => d.lifespan_months)
+  const metabolicRates = allDNA.map((d) => d.metabolic_rate)
+  const nicheWidths = allDNA.map((d) => d.niche_width)
+  const diversityScores = allDNA.map((d) => d.gene_diversity_score)
+
+  const avg = (nums: number[]) => (nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0)
+
+  const lowHealth = allDNA
+    .filter((d) => d.health_birth_score < 60)
+    .map((d) => ({
+      strategy_id: d.strategy_id,
+      name: STRATEGY_NAMES[d.strategy_id],
+      health_birth_score: d.health_birth_score,
+      gene_diversity_score: d.gene_diversity_score,
+      family_name: d.family_name,
+    }))
+
+  const shortLifespan = allDNA
+    .filter((d) => d.lifespan_months < 12)
+    .map((d) => ({
+      strategy_id: d.strategy_id,
+      name: STRATEGY_NAMES[d.strategy_id],
+      lifespan_months: d.lifespan_months,
+      lifespan_phase: d.lifespan_phase,
+      aging_velocity: d.aging_velocity,
+      family_name: d.family_name,
+    }))
+
+  const highMetabolic = allDNA
+    .filter((d) => d.metabolic_rate > 0.5)
+    .map((d) => ({
+      strategy_id: d.strategy_id,
+      name: STRATEGY_NAMES[d.strategy_id],
+      metabolic_rate: d.metabolic_rate,
+      niche_width: d.niche_width,
+      metabolic_syndrome: d.metabolic_syndrome,
+      family_name: d.family_name,
+    }))
+
+  const metabolicRank = allDNA
+    .map((d) => ({
+      strategy_id: d.strategy_id,
+      name: STRATEGY_NAMES[d.strategy_id],
+      metabolic_rate: d.metabolic_rate,
+      niche_width: d.niche_width,
+      family_name: d.family_name,
+    }))
+    .sort((a, b) => b.metabolic_rate - a.metabolic_rate)
+
+  const recentStrategies = allDNA
+    .slice(-3)
+    .map((d) => ({
+      strategy_id: d.strategy_id,
+      name: STRATEGY_NAMES[d.strategy_id],
+      health_birth_score: d.health_birth_score,
+      gene_diversity_score: d.gene_diversity_score,
+      family_name: d.family_name,
+    }))
+
+  // 雷达指标（与 EcosystemView.vue 中 indicatorNames 默认值一致）
+  const radarIndicators = [
+    { name: '健康度', max: 100 },
+    { name: '多样性', max: 100 },
+    { name: '代谢稳定性', max: 100 },
+    { name: '生态位宽度', max: 100 },
+    { name: '差异化', max: 100 },
+  ]
+
+  // 家族雷达：按家族聚合
+  const familyGroups = new Map<string, typeof allDNA>()
+  allDNA.forEach((d) => {
+    const fam = d.family_name || '其他'
+    if (!familyGroups.has(fam)) familyGroups.set(fam, [])
+    familyGroups.get(fam)!.push(d)
+  })
+
+  const familyRadar = Array.from(familyGroups.entries()).map(([name, items]) => ({
+    name,
+    value: [
+      avg(items.map((s) => s.health_birth_score)),
+      avg(items.map((s) => s.gene_diversity_score * 100)),
+      avg(items.map((s) => 1 - s.metabolic_rate)),
+      avg(items.map((s) => s.niche_width)),
+      avg(items.map((s) => 1 - s.inbreeding_coefficient)),
     ],
-    links: [
-      { source: 'demo_s1', target: 'demo_s2', value: 0.5 },
-    ],
-  },
+  }))
+
+  // 关系网络：9 个节点 + 两两相似度连线
+  const nodes = allDNA.map((d) => ({
+    id: d.strategy_id,
+    name: STRATEGY_NAMES[d.strategy_id],
+    family: d.family_name || '其他',
+    family_id: d.family_id || 'family_other',
+    health: d.health_birth_score,
+    lifespan: d.lifespan_months,
+    metabolic_rate: d.metabolic_rate,
+    value: 1,
+    symbolSize: 20,
+  }))
+
+  const links: { source: string; target: string; value: number }[] = []
+  for (let i = 0; i < allDNA.length; i++) {
+    for (let j = i + 1; j < allDNA.length; j++) {
+      const a = allDNA[i]
+      const b = allDNA[j]
+      // 同家族相似度更高
+      const sameFamily = a.family_id === b.family_id ? 0.3 : 0.0
+      const geneOverlap = a.feature_genes.filter((g: string) => b.feature_genes.includes(g)).length / Math.max(a.feature_genes.length, b.feature_genes.length)
+      const similarity = Math.min(0.85, sameFamily + geneOverlap * 0.5 + 0.05)
+      if (similarity > 0.15) {
+        links.push({ source: a.strategy_id, target: b.strategy_id, value: Math.round(similarity * 100) / 100 })
+      }
+    }
+  }
+
+  return {
+    total_strategies: allDNA.length,
+    family_count: familyCounts.size,
+    avg_health_score: avg(healthScores),
+    min_health_score: Math.min(...healthScores),
+    max_health_score: Math.max(...healthScores),
+    avg_diversity: avg(diversityScores),
+    inbreeding_risk_count: allDNA.filter((d) => d.inbreeding_coefficient > 0.3).length,
+    family_distribution: familyDistribution,
+    health_distribution: healthDistribution,
+    low_health_strategies: lowHealth,
+    recent_strategies: recentStrategies,
+    avg_metabolic_rate: avg(metabolicRates),
+    avg_niche_width: avg(nicheWidths),
+    syndrome_count: highMetabolic.filter((s) => s.metabolic_syndrome).length,
+    high_metabolic_strategies: highMetabolic,
+    avg_lifespan: avg(lifespans),
+    endangered_count: lifespans.filter((m) => m < 3).length,
+    short_lifespan_strategies: shortLifespan,
+    metabolic_ranking: metabolicRank,
+    family_radar: familyRadar,
+    radar_indicators: radarIndicators,
+    family_network: { nodes, links },
+  }
 }
+
+export const DEMO_ECOSYSTEM = buildEcosystem()
 
 // ── 演示组合设计结果（用于 portfolioApi.design） ──
 export const DEMO_PORTFOLIO_DESIGN_RESULT: Record<string, any> = {

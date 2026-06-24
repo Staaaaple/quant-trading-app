@@ -1,5 +1,5 @@
 import { delay } from './mock/utils'
-import { DEMO_DNA, DEMO_ECOSYSTEM } from './mock/demoData'
+import { DEMO_DNA, DEMO_DNA_MAP, DEMO_ECOSYSTEM } from './mock/demoData'
 
 export interface StrategyDNA {
   strategy_id: string
@@ -158,29 +158,45 @@ export interface EcosystemOverview {
 }
 
 export const dnaApi = {
-  getDNA(_strategy_id: string): Promise<StrategyDNA> {
-    return delay(300).then(() => DEMO_DNA as StrategyDNA)
+  getDNA(strategy_id: string): Promise<StrategyDNA> {
+    const dna = DEMO_DNA_MAP[strategy_id] || DEMO_DNA
+    return delay(300).then(() => dna as StrategyDNA)
   },
-  getSummary(_strategy_id: string): Promise<StrategyDNASummary> {
+  getSummary(strategy_id: string): Promise<StrategyDNASummary> {
+    const dna = DEMO_DNA_MAP[strategy_id] || DEMO_DNA
     return delay(300).then(() => ({
-      strategy_id: 'demo_s1',
-      name: '科技ETF趋势策略',
-      gene_diversity_score: 0.78,
-      health_birth_score: 0.82,
-      feature_genes: ['ma20', 'volume_ratio', 'atr'],
-      signal_genes: ['crossover', 'momentum_break'],
-      status: 'active',
-      family_id: 'family_trend',
-      family_name: '趋势家族',
-      metabolic_rate: 0.65,
-      niche_width: 0.70,
-      inbreeding_warning: false,
-      homogeneity_risk: 0.15,
-      lifespan_months: 24,
+      strategy_id: dna.strategy_id,
+      name: (() => {
+        const names: Record<string, string> = {
+          demo_s1: '科技ETF趋势策略',
+          demo_s2: '消费ETF均值回归',
+          demo_s3: '银行ETF高股息',
+          demo_s4: '工业ETF周期跟踪',
+          demo_s5: '医疗ETF防御配置',
+          demo_s6: '国债ETF利率策略',
+          demo_s7: '现金管理策略',
+          demo_s8: '黄金ETF避险策略',
+          demo_s9: '天孚通信成长策略',
+        }
+        return names[dna.strategy_id] || dna.strategy_id
+      })(),
+      gene_diversity_score: dna.gene_diversity_score,
+      health_birth_score: dna.health_birth_score,
+      feature_genes: dna.feature_genes,
+      signal_genes: dna.signal_genes,
+      status: dna.status,
+      family_id: dna.family_id,
+      family_name: dna.family_name,
+      metabolic_rate: dna.metabolic_rate,
+      niche_width: dna.niche_width,
+      inbreeding_warning: dna.inbreeding_coefficient > 0.3,
+      homogeneity_risk: dna.inbreeding_coefficient,
+      lifespan_months: dna.lifespan_months,
     }))
   },
-  sequence(_strategy_id: string): Promise<StrategyDNA> {
-    return delay(500).then(() => DEMO_DNA as StrategyDNA)
+  sequence(strategy_id: string): Promise<StrategyDNA> {
+    const dna = DEMO_DNA_MAP[strategy_id] || DEMO_DNA
+    return delay(500).then(() => dna as StrategyDNA)
   },
   preview(_strategy_id: string, _code: string): Promise<DNAPreview> {
     return delay(600).then(() => ({
@@ -190,7 +206,7 @@ export const dnaApi = {
       risk_genes: ['max_drawdown_guard', 'position_limit'],
       execution_genes: ['twap', 'slippage_control'],
       gene_diversity_score: 0.78,
-      health_birth_score: 0.82,
+      health_birth_score: 82,
       gene_vector: [0.1, 0.2, 0.3, 0.4],
       metabolic_rate: 0.65,
       niche_width: 0.70,
@@ -200,35 +216,68 @@ export const dnaApi = {
     }))
   },
   listAll(): Promise<StrategyDNASummary[]> {
-    return delay(300).then(() => [
-      {
-        strategy_id: 'demo_s1',
-        name: '科技ETF趋势策略',
-        gene_diversity_score: 0.78,
-        health_birth_score: 0.82,
-        feature_genes: ['ma20', 'volume_ratio', 'atr'],
-        signal_genes: ['crossover', 'momentum_break'],
-        status: 'active',
-        family_id: 'family_trend',
-        family_name: '趋势家族',
-        metabolic_rate: 0.65,
-        niche_width: 0.70,
-        inbreeding_warning: false,
-        homogeneity_risk: 0.15,
-        lifespan_months: 24,
-      },
-    ])
+    const all = Object.values(DEMO_DNA_MAP)
+    const names: Record<string, string> = {
+      demo_s1: '科技ETF趋势策略',
+      demo_s2: '消费ETF均值回归',
+      demo_s3: '银行ETF高股息',
+      demo_s4: '工业ETF周期跟踪',
+      demo_s5: '医疗ETF防御配置',
+      demo_s6: '国债ETF利率策略',
+      demo_s7: '现金管理策略',
+      demo_s8: '黄金ETF避险策略',
+      demo_s9: '天孚通信成长策略',
+    }
+    return delay(300).then(() =>
+      all.map((dna) => ({
+        strategy_id: dna.strategy_id,
+        name: names[dna.strategy_id] || dna.strategy_id,
+        gene_diversity_score: dna.gene_diversity_score,
+        health_birth_score: dna.health_birth_score,
+        feature_genes: dna.feature_genes,
+        signal_genes: dna.signal_genes,
+        status: dna.status,
+        family_id: dna.family_id,
+        family_name: dna.family_name,
+        metabolic_rate: dna.metabolic_rate,
+        niche_width: dna.niche_width,
+        inbreeding_warning: dna.inbreeding_coefficient > 0.3,
+        homogeneity_risk: dna.inbreeding_coefficient,
+        lifespan_months: dna.lifespan_months,
+      }))
+    )
   },
-  getPhylogeny(_strategy_id: string): Promise<StrategyPhylogeny> {
+  getPhylogeny(strategy_id: string): Promise<StrategyPhylogeny> {
+    const dna = DEMO_DNA_MAP[strategy_id] || DEMO_DNA
+    const all = Object.values(DEMO_DNA_MAP)
+    // 找同家族的其他策略作为 relatives
+    const relatives = all
+      .filter((d) => d.family_id === dna.family_id && d.strategy_id !== dna.strategy_id)
+      .map((d) => ({
+        strategy_id: d.strategy_id,
+        name: (() => {
+          const names: Record<string, string> = {
+            demo_s1: '科技ETF趋势策略',
+            demo_s2: '消费ETF均值回归',
+            demo_s3: '银行ETF高股息',
+            demo_s4: '工业ETF周期跟踪',
+            demo_s5: '医疗ETF防御配置',
+            demo_s6: '国债ETF利率策略',
+            demo_s7: '现金管理策略',
+            demo_s8: '黄金ETF避险策略',
+            demo_s9: '天孚通信成长策略',
+          }
+          return names[d.strategy_id] || d.strategy_id
+        })(),
+        similarity: 0.45,
+      }))
     return delay(300).then(() => ({
-      strategy_id: 'demo_s1',
-      family_id: 'family_trend',
-      family_name: '趋势家族',
-      relatives: [
-        { strategy_id: 'demo_s2', name: '消费ETF均值回归', similarity: 0.45 },
-      ],
-      homogeneity_risk: 0.15,
-      inbreeding_warning: false,
+      strategy_id: dna.strategy_id,
+      family_id: dna.family_id,
+      family_name: dna.family_name,
+      relatives,
+      homogeneity_risk: dna.inbreeding_coefficient,
+      inbreeding_warning: dna.inbreeding_coefficient > 0.3,
     }))
   },
   computePhylogeny(): Promise<{ status: string; message: string }> {
@@ -236,15 +285,21 @@ export const dnaApi = {
   },
   listFamilies(): Promise<FamilyInfo[]> {
     return delay(300).then(() => [
-      { family_id: 'family_trend', family_name: '趋势家族', count: 3 },
-      { family_id: 'family_mr', family_name: '均值回归家族', count: 2 },
-      { family_id: 'family_def', family_name: '防御家族', count: 2 },
+      { family_id: 'family_trend', family_name: '趋势家族', count: 1 },
+      { family_id: 'family_mr', family_name: '均值回归家族', count: 1 },
+      { family_id: 'family_value', family_name: '价值家族', count: 1 },
+      { family_id: 'family_cycle', family_name: '周期家族', count: 1 },
+      { family_id: 'family_def', family_name: '防御家族', count: 1 },
+      { family_id: 'family_fixed', family_name: '固定收益家族', count: 1 },
+      { family_id: 'family_cash', family_name: '现金家族', count: 1 },
+      { family_id: 'family_commodity', family_name: '商品家族', count: 1 },
+      { family_id: 'family_growth', family_name: '成长家族', count: 1 },
     ])
   },
   getEcosystem(): Promise<EcosystemOverview> {
     return delay(400).then(() => DEMO_ECOSYSTEM as EcosystemOverview)
   },
-  getLifespan(_strategy_id: string): Promise<{
+  getLifespan(strategy_id: string): Promise<{
     strategy_id: string
     lifespan_months: number
     lifespan_phase: string
@@ -252,13 +307,14 @@ export const dnaApi = {
     aging_velocity: number
     lifespan_recommendations: string[]
   }> {
+    const dna = DEMO_DNA_MAP[strategy_id] || DEMO_DNA
     return delay(300).then(() => ({
-      strategy_id: 'demo_s1',
-      lifespan_months: 24,
-      lifespan_phase: 'mature',
-      lifespan_phase_label: '成熟期',
-      aging_velocity: 0.12,
-      lifespan_recommendations: ['定期再训练', '监控过拟合'],
+      strategy_id: dna.strategy_id,
+      lifespan_months: dna.lifespan_months,
+      lifespan_phase: dna.lifespan_phase,
+      lifespan_phase_label: dna.lifespan_phase_label,
+      aging_velocity: dna.aging_velocity,
+      lifespan_recommendations: dna.lifespan_recommendations,
     }))
   },
   computeLifespans(): Promise<{ status: string; message: string }> {
