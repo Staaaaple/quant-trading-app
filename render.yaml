@@ -6,15 +6,31 @@ services:
     rootDir: backend
     buildCommand: |
       pip install -r requirements.txt
-      cd ../frontend && npm install && npm run build-only
+      rm -rf ../backend/static
+      cd ../frontend && npm install && npm run build-only -- --outDir=../backend/static
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: quantevo-data
+      mountPath: /var/lib/quantevo
+      sizeGB: 2
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: NODE_VERSION
         value: 20.19.0
       - key: SQLITE_DB_PATH
-        value: /tmp/quant_trading.db
+        value: /var/lib/quantevo/quant_trading.db
       - key: BACKEND_CORS_ORIGINS
         value: '["*"]'
-    healthCheckPath: /health
+      # LLM / Embedding: 使用 OpenAI API（Render 实例不适合运行本地大模型）
+      - key: LLM_BACKEND
+        value: openai
+      - key: EMBEDDING_BACKEND
+        value: openai
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: EMBEDDING_MODEL
+        value: text-embedding-3-small

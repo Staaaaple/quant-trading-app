@@ -16,5 +16,13 @@ apscheduler==3.11.0
 faiss-cpu>=1.7.4
 sentence-transformers>=2.2.0
 
+# 本地 LLM (Windows/Linux + NVIDIA GPU)
+transformers>=4.40.0
+bitsandbytes>=0.43.0
+accelerate>=0.30.0
+
 # 本地 LLM (Apple Silicon)
 mlx-lm>=0.31.0
+
+# 云端 LLM / Embedding (OpenAI API)
+openai>=1.30.0
