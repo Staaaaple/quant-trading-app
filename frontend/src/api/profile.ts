@@ -1,8 +1,19 @@
 import { delay } from './mock/utils'
 import { DEMO_QUESTIONS, DEMO_INVESTOR_PROFILE } from './mock/demoData'
 
-/** 演示模式下是否已删除画像，用于首页空状态/仪表盘切换 */
-let _profileDeleted = false
+const PROFILE_DELETED_KEY = 'demo_profile_deleted'
+
+function isProfileDeleted(): boolean {
+  return sessionStorage.getItem(PROFILE_DELETED_KEY) === '1'
+}
+
+function setProfileDeleted(deleted: boolean) {
+  if (deleted) {
+    sessionStorage.setItem(PROFILE_DELETED_KEY, '1')
+  } else {
+    sessionStorage.removeItem(PROFILE_DELETED_KEY)
+  }
+}
 
 export interface Question {
   id: string
@@ -102,17 +113,17 @@ export const profileApi = {
     })),
   create: (answers: Record<string, string | string[]>) =>
     delay(500).then(() => {
-      _profileDeleted = false
+      setProfileDeleted(false)
       return { ...DEMO_INVESTOR_PROFILE, answers_json: answers } as InvestorProfile
     }),
-  getMine: () => delay(300).then(() => _profileDeleted ? null : DEMO_INVESTOR_PROFILE as InvestorProfile),
+  getMine: () => delay(300).then(() => isProfileDeleted() ? null : DEMO_INVESTOR_PROFILE as InvestorProfile),
   update: (_profileId: number, answers: Record<string, string | string[]>) =>
     delay(500).then(() => ({ ...DEMO_INVESTOR_PROFILE, answers_json: answers } as InvestorProfile)),
   deleteMine: () => delay(400).then(() => {
-    _profileDeleted = true
+    setProfileDeleted(true)
     sessionStorage.removeItem('latest_portfolio')
     localStorage.removeItem('portfolio_task_id')
     return { success: true }
   }),
-  hasProfile: () => delay(100).then(() => !_profileDeleted),
+  hasProfile: () => delay(100).then(() => !isProfileDeleted()),
 }
