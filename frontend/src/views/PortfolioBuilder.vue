@@ -32,13 +32,6 @@ function markDemoAnimationShown() {
   sessionStorage.setItem(DEMO_ANIMATION_KEY, '1')
 }
 
-/** 隐秘重置：清除演示动画已播放标记，下次进入会重新播放 */
-function resetDemoAnimation() {
-  sessionStorage.removeItem(DEMO_ANIMATION_KEY)
-  sessionStorage.removeItem('latest_portfolio')
-  window.location.reload()
-}
-
 // ── 组合构建状态 ──
 const isBuilding = ref(false)
 const buildingElapsed = ref(0)
@@ -840,18 +833,7 @@ onMounted(() => {
           <span class="header-label">PORTFOLIO</span>
           <span class="header-name">资产组合</span>
         </div>
-        <button
-          v-if="userStore.isDemo"
-          class="demo-reset-btn"
-          title="重置演示动画"
-          @click="resetDemoAnimation"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-          </svg>
-        </button>
-        <div v-else style="width: 36px"></div>
+        <div style="width: 36px"></div>
       </div>
     </header>
 
@@ -1352,18 +1334,6 @@ onMounted(() => {
   color: #525252; cursor: pointer; transition: all 0.2s;
 }
 .back-btn:hover { background: #fff; border-color: rgba(0,0,0,0.1); color: #171717; }
-.demo-reset-btn {
-  width: 36px; height: 36px;
-  border-radius: 10px; border: 1px solid rgba(0,0,0,0.06);
-  background: rgba(255,255,255,0.5);
-  display: flex; align-items: center; justify-content: center;
-  color: #a3a3a3; cursor: pointer; transition: all 0.2s;
-  opacity: 0.25;
-}
-.demo-reset-btn:hover {
-  opacity: 1;
-  background: #fff; border-color: rgba(0,0,0,0.1); color: #6366f1;
-}
 .header-title { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .header-label { font-size: 0.6rem; font-weight: 700; color: #d4d4d4; letter-spacing: 0.1em; }
 .header-name { font-size: 0.95rem; font-weight: 600; color: #171717; letter-spacing: -0.01em; }

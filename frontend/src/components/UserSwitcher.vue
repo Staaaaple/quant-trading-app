@@ -61,6 +61,14 @@ function getInitials(name: string) {
   return name.charAt(0).toUpperCase()
 }
 
+/** 隐秘重置：清除演示组合动画标记，下次进入资产组合页重新播放 */
+function resetDemoAnimation() {
+  sessionStorage.removeItem('demo_portfolio_animation_shown')
+  sessionStorage.removeItem('latest_portfolio')
+  isOpen.value = false
+  window.location.reload()
+}
+
 function openCreateModal() {
   showCreateModal.value = true
   isOpen.value = false
@@ -126,6 +134,18 @@ onMounted(() => {
             <path d="M12 5v14M5 12h14"/>
           </svg>
           新建用户
+        </button>
+        <button
+          v-if="userStore.isDemo"
+          class="reset-anim-btn"
+          title="重置演示动画"
+          @click="resetDemoAnimation"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          重置演示动画
         </button>
       </div>
     </div>
@@ -345,6 +365,30 @@ onMounted(() => {
   border-color: #171717;
   color: #171717;
   background: #fafafa;
+}
+
+.reset-anim-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #a3a3a3;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  opacity: 0.5;
+}
+.reset-anim-btn:hover {
+  opacity: 1;
+  color: #6366f1;
+  background: #f5f3ff;
 }
 
 .overlay {
