@@ -86,23 +86,6 @@ export function createRebalancePlan(payload: {
   return client.post('/fullchain/rebalance/plan', payload)
 }
 
-// ── 周报 ──
-
-export interface WeeklyReportPayload {
-  portfolio: Record<string, any>
-  market_signal: Record<string, any>
-  performance_data: Record<string, any>
-  lifespan_data: Record<string, any>
-}
-
-export function generateWeeklyReport(payload: WeeklyReportPayload) {
-  return client.post('/fullchain/weekly-report/generate', payload)
-}
-
-export function getLatestWeeklyReport(userId: number) {
-  return client.get(`/fullchain/weekly-report/latest/${userId}`)
-}
-
 // ── 寿命监控 ──
 
 export function runLifespanCheck() {

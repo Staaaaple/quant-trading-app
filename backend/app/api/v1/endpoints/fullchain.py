@@ -10,10 +10,12 @@ Phase D: 画像→组合→教学→建仓→推送→调仓→周报，完整�
 - POST /push/lifespan-alert: 生成寿命预警
 - POST /rebalance/check: 检查再平衡触发条件
 - POST /rebalance/alternatives: 获取替代策略推荐
-- POST /weekly-report/generate: 生成周报
-- GET /weekly-report/latest: 获取最新周报
+- POST /market-report/generate: 生成市场报告
+- GET /market-report/latest: 获取最新市场报告
+- GET /market-report/list: 获取市场报告历史列表
 """
 
+import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Any
@@ -33,7 +35,10 @@ from app.services.rebalance_service import (
     generate_alternative_strategies,
     generate_rebalance_plan,
 )
-from app.services.weekly_report import generate_weekly_report
+from app.services.market_report_service import (
+    generate_daily_market_report,
+    generate_weekly_market_report,
+)
 from app.services.lifespan_monitor_service import (
     run_monthly_lifespan_check,
     get_lifespan_trend,
@@ -316,59 +321,127 @@ def create_rebalance_plan(
         raise HTTPException(status_code=500, detail=f"生成调仓方案失败: {e}")
 
 
-# ── 周报 ──
+# ── 市场报告 ──
 
-@router.post("/weekly-report/generate", response_model=dict[str, Any])
-def create_weekly_report(
+@router.post("/market-report/generate", response_model=dict[str, Any])
+def create_market_report(
     payload: dict[str, Any],
     db: Session = Depends(get_db),
     header_user_id: int | None = Depends(get_current_user_id),
 ):
-    """生成周报.
+    """生成市场报告.
 
     Payload:
     {
-        "user_id": 1,
-        "portfolio": {组合配置},
-        "market_signal": {市场信号},
-        "performance_data": {表现数据},
-        "lifespan_data": {寿命数据}
+        "portfolio_id": 1,           // 可选
+        "report_type": "auto"        // auto/daily/weekly，默认auto
     }
     """
+    from app.models.operation_log import MarketReport
+
     try:
         user_id = header_user_id or payload.get("user_id", 0)
-        portfolio = payload.get("portfolio", {})
-        market_signal = payload.get("market_signal", {})
-        performance_data = payload.get("performance_data", {})
-        lifespan_data = payload.get("lifespan_data", {})
+        portfolio_id = payload.get("portfolio_id")
+        report_type = payload.get("report_type", "auto")
 
-        report = generate_weekly_report(
+        today = datetime.date.today()
+        if report_type == "auto":
+            report_type = "weekly" if today.weekday() == 4 else "daily"
+
+        if report_type == "weekly":
+            report = generate_weekly_market_report(user_id, portfolio_id)
+        else:
+            report = generate_daily_market_report(user_id, portfolio_id)
+
+        db_report = MarketReport(
             user_id=user_id,
-            portfolio=portfolio,
-            market_signal=market_signal,
-            performance_data=performance_data,
-            lifespan_data=lifespan_data,
+            portfolio_id=portfolio_id,
+            report_type=report_type,
+            report_date=today.isoformat(),
+            page1_market_overview=report["page1_market_overview"],
+            page2_portfolio_performance=report["page2_portfolio_performance"],
+            page3_weekly_market=report.get("page3_weekly_market"),
         )
+        db.add(db_report)
+        db.commit()
+
         return {"success": True, "data": report}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"生成周报失败: {e}")
+        raise HTTPException(status_code=500, detail=f"生成市场报告失败: {e}")
 
 
-@router.get("/weekly-report/latest/{user_id}", response_model=dict[str, Any])
-def get_latest_weekly_report(
+@router.get("/market-report/latest/{user_id}", response_model=dict[str, Any])
+def get_latest_market_report(
     user_id: int,
+    report_type: str = "daily",
     db: Session = Depends(get_db),
     header_user_id: int | None = Depends(get_current_user_id),
 ):
-    """获取用户最新周报."""
-    # 验证只能访问自己的周报
+    """获取用户最新市场报告."""
+    from app.models.operation_log import MarketReport
+
     if header_user_id and user_id != header_user_id:
         raise HTTPException(status_code=403, detail="Can only access your own report")
-    # TODO: 从数据库查询最新周报
+
+    report = (
+        db.query(MarketReport)
+        .filter(MarketReport.user_id == user_id)
+        .filter(MarketReport.report_type == report_type)
+        .order_by(MarketReport.created_at.desc())
+        .first()
+    )
+
+    if not report:
+        return {
+            "success": True,
+            "data": None,
+            "message": f"暂无{report_type}报告，请使用 POST /market-report/generate 生成",
+        }
+
     return {
         "success": True,
-        "data": None,
-        "message": "功能开发中，请使用 POST /weekly-report/generate 生成周报",
+        "data": {
+            "report_type": report.report_type,
+            "report_date": report.report_date,
+            "page1": report.page1_market_overview,
+            "page2": report.page2_portfolio_performance,
+            "page3": report.page3_weekly_market,
+        }
+    }
+
+
+@router.get("/market-report/list/{user_id}", response_model=dict[str, Any])
+def list_market_reports(
+    user_id: int,
+    report_type: str | None = None,
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    header_user_id: int | None = Depends(get_current_user_id),
+):
+    """获取用户市场报告历史列表."""
+    from app.models.operation_log import MarketReport
+
+    if header_user_id and user_id != header_user_id:
+        raise HTTPException(status_code=403, detail="Can only access your own report")
+
+    query = db.query(MarketReport).filter(MarketReport.user_id == user_id)
+    if report_type:
+        query = query.filter(MarketReport.report_type == report_type)
+
+    reports = query.order_by(MarketReport.report_date.desc()).limit(limit).all()
+
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": r.id,
+                "report_type": r.report_type,
+                "report_date": r.report_date,
+                "is_read": r.is_read,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in reports
+        ]
     }
 
 

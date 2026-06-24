@@ -20,6 +20,11 @@ function switchUser(userId: number) {
   window.location.reload()
 }
 
+async function enterDemo() {
+  isOpen.value = false
+  await userStore.enterDemoMode()
+}
+
 async function createUser() {
   if (!newUserName.value.trim()) return
   const user = await userStore.createUser(newUserName.value.trim())
@@ -94,15 +99,16 @@ onMounted(() => {
           :key="user.id"
           class="user-item"
           :class="{ active: user.id === userStore.currentUserId }"
-          @click="switchUser(user.id)"
+          @click="user.is_demo ? enterDemo() : switchUser(user.id)"
         >
           <div class="user-avatar">{{ getInitials(user.name) }}</div>
           <div class="user-info">
             <div class="user-name">{{ user.name }}</div>
-            <div v-if="user.id === userStore.currentUserId" class="user-badge">当前</div>
+            <div v-if="user.is_demo" class="user-badge user-badge--demo">演示</div>
+            <div v-else-if="user.id === userStore.currentUserId" class="user-badge">当前</div>
           </div>
           <button
-            v-if="userStore.users.length > 1"
+            v-if="userStore.users.length > 1 && !user.is_demo"
             class="delete-btn"
             @click.stop="confirmDelete(user)"
             title="删除用户"
@@ -287,6 +293,10 @@ onMounted(() => {
   background: #dcfce7;
   padding: 2px 6px;
   border-radius: 4px;
+}
+.user-badge--demo {
+  color: #7c3aed;
+  background: #ede9fe;
 }
 
 .delete-btn {

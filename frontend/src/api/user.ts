@@ -5,6 +5,7 @@ export interface User {
   name: string
   avatar_url: string | null
   is_active: boolean
+  is_demo: boolean
   created_at: string
   updated_at: string
 }
@@ -20,4 +21,5 @@ export const userApi = {
   create: (data: UserCreate) => client.post<User>('/users', data).then(r => r.data),
   update: (id: number, data: Partial<UserCreate>) => client.put<User>(`/users/${id}`, data).then(r => r.data),
   delete: (id: number) => client.delete(`/users/${id}`).then(r => r.data),
+  resetDemo: () => client.post<{ ok: boolean; deleted_counts?: Record<string, number> }>('/users/demo/reset').then(r => r.data),
 }

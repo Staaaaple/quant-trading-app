@@ -97,7 +97,7 @@ async function loadProfile() {
 }
 
 function goMarket() {
-  router.push('/market')
+  router.push('/market/guide')
 }
 
 function goHome() {

@@ -22,6 +22,15 @@ const dna = ref<StrategyDNA | null>(null)
 const phylogeny = ref<StrategyPhylogeny | null>(null)
 const loading = ref(false)
 const error = ref('')
+const showKlineGuide = ref(false)
+
+function openKlineGuide() {
+  showKlineGuide.value = true
+}
+
+function closeKlineGuide() {
+  showKlineGuide.value = false
+}
 
 async function load() {
   loading.value = true
@@ -148,7 +157,6 @@ const candleChartOption = computed(() => {
         coord: [idx, b.price],
         value: `买入 ${b.price.toFixed(2)}`,
         itemStyle: { color: '#16a34a' },
-        symbolRotate: 180,
       }
     })
     .filter(Boolean)
@@ -162,6 +170,7 @@ const candleChartOption = computed(() => {
         coord: [idx, s.price],
         value: `卖出 ${s.price.toFixed(2)}`,
         itemStyle: { color: '#b91c1c' },
+        symbolRotate: 180,
       }
     })
     .filter(Boolean)
@@ -208,8 +217,8 @@ const candleChartOption = computed(() => {
           borderColor0: '#22c55e',
         },
         markPoint: {
-          symbol: 'pin',
-          symbolSize: 48,
+          symbol: 'triangle',
+          symbolSize: 16,
           label: {
             show: true,
             fontSize: 9,
@@ -507,6 +516,14 @@ const phaseMap: Record<string, string> = { young: '年轻', mature: '成熟', ag
           <span class="section-sub">
             {{ candleData.length }} 根K线 · {{ tradeMarkers.buy.length }} 笔买入 · {{ tradeMarkers.sell.length }} 笔卖出
           </span>
+          <button class="kline-guide-btn" @click="openKlineGuide">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <line x1="12" x2="12.01" y1="17" y2="17"/>
+            </svg>
+            K线说明
+          </button>
         </h2>
         <div class="chart-card">
           <VChart
@@ -547,6 +564,84 @@ const phaseMap: Record<string, string> = { young: '年轻', mature: '成熟', ag
     </template>
 
     <LoadingOverlay :visible="loading" text="加载回测详情..." />
+
+    <!-- K线说明弹窗 -->
+    <div v-if="showKlineGuide" class="modal-overlay" @click.self="closeKlineGuide">
+      <div class="modal modal--wide">
+        <div class="modal-header">
+          <h3 class="modal-title">K线入门指南</h3>
+          <button class="modal-close" @click="closeKlineGuide">×</button>
+        </div>
+        <div class="modal-body kline-guide-body">
+          <div class="guide-section">
+            <h4 class="guide-section-title">K线是什么</h4>
+            <p class="guide-text">
+              K线（Candlestick）用一根蜡烛状的图形记录一段时间内的四个价格：<strong>开盘价、收盘价、最高价、最低价</strong>。
+              如果收盘价高于开盘价，称为「阳线」，通常用红色表示；反之称为「阴线」，通常用绿色表示。
+            </p>
+            <div class="guide-diagram">
+              <div class="kline-sample bullish">
+                <div class="kline-wick top"></div>
+                <div class="kline-body"></div>
+                <div class="kline-wick bottom"></div>
+                <span class="kline-label">阳线：收 > 开</span>
+              </div>
+              <div class="kline-sample bearish">
+                <div class="kline-wick top"></div>
+                <div class="kline-body"></div>
+                <div class="kline-wick bottom"></div>
+                <span class="kline-label">阴线：收 < 开</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-section">
+            <h4 class="guide-section-title">常见K线形态</h4>
+            <div class="pattern-grid">
+              <div class="pattern-card">
+                <div class="pattern-name">十字星（Doji）</div>
+                <div class="pattern-desc">开盘与收盘几乎相同，表示多空力量均衡，可能出现反转或盘整。</div>
+              </div>
+              <div class="pattern-card">
+                <div class="pattern-name">锤子线（Hammer）</div>
+                <div class="pattern-desc">下跌后出现，下影线较长、实体较小，暗示下方有支撑，可能见底反弹。</div>
+              </div>
+              <div class="pattern-card">
+                <div class="pattern-name">吊颈线 / 射击之星（Shooting Star）</div>
+                <div class="pattern-desc">上涨后出现，上影线较长、实体较小，暗示上方抛压大，可能见顶回落。</div>
+              </div>
+              <div class="pattern-card">
+                <div class="pattern-name">吞没形态（Engulfing）</div>
+                <div class="pattern-desc">后一根K线完全包住前一根。阳线吞没阴线是看涨信号，反之看跌。</div>
+              </div>
+              <div class="pattern-card">
+                <div class="pattern-name">早晨之星（Morning Star）</div>
+                <div class="pattern-desc">三根K线组合：长阴 → 小实体（十字星） → 长阳，常见于底部反转。</div>
+              </div>
+              <div class="pattern-card">
+                <div class="pattern-name">黄昏之星（Evening Star）</div>
+                <div class="pattern-desc">三根K线组合：长阳 → 小实体（十字星） → 长阴，常见于顶部反转。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-section">
+            <h4 class="guide-section-title">K线走势反映什么</h4>
+            <ul class="guide-list">
+              <li><strong>上涨趋势</strong>：高点不断抬高、低点也不断抬高，阳线数量多且实体较大。</li>
+              <li><strong>下跌趋势</strong>：低点不断降低、高点也不断降低，阴线数量多且实体较大。</li>
+              <li><strong>横盘整理</strong>：K线在一定区间内波动，阴阳交替，实体逐渐变小。</li>
+              <li><strong>放量突破</strong>：大阳线伴随成交量放大，常预示趋势启动或加速。</li>
+              <li><strong>缩量回调</strong>：下跌时成交量缩小，常是上涨中继的洗盘信号。</li>
+            </ul>
+          </div>
+
+          <div class="guide-tip">
+            本页面图表中的绿色三角为买入标记，红色三角为卖出标记，可结合K线形态判断交易时机。
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -993,6 +1088,107 @@ const phaseMap: Record<string, string> = { young: '年轻', mature: '成熟', ag
 .text-loss {
   color: var(--loss);
   font-weight: 600;
+}
+
+.kline-guide-btn {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);
+  cursor: pointer; transition: all 0.2s;
+}
+.kline-guide-btn:hover {
+  border-color: var(--border-focus); color: var(--text-primary);
+}
+
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  width: 640px; max-width: 100%;
+  max-height: 85vh;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow-lg);
+}
+.modal--wide { width: 800px; }
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-lg) var(--space-2xl);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.modal-title {
+  font-size: 1.1rem; font-weight: 700; color: var(--text-primary);
+  margin: 0;
+}
+.modal-close {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none;
+  font-size: 1.5rem; color: var(--text-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.modal-close:hover { color: var(--text-primary); }
+.modal-body {
+  padding: var(--space-2xl);
+  overflow-y: auto;
+}
+
+.kline-guide-body { line-height: 1.7; color: var(--text-secondary); }
+.guide-section { margin-bottom: var(--space-xl); }
+.guide-section-title {
+  font-size: 1rem; font-weight: 700; color: var(--text-primary);
+  margin: 0 0 var(--space-md) 0;
+}
+.guide-text { margin: 0; font-size: 0.9rem; }
+.guide-text strong { color: var(--text-primary); }
+.guide-diagram {
+  display: flex; gap: var(--space-2xl); margin-top: var(--space-lg);
+}
+.kline-sample {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.kline-wick { width: 2px; height: 24px; background: #94a3b8; }
+.kline-body { width: 24px; height: 40px; border-radius: 2px; }
+.kline-sample.bullish .kline-body { background: #ef4444; border: 1px solid #ef4444; }
+.kline-sample.bearish .kline-body { background: #22c55e; border: 1px solid #22c55e; }
+.kline-label { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; }
+
+.pattern-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-md);
+}
+.pattern-card {
+  background: var(--bg-base); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: var(--space-md) var(--space-lg);
+}
+.pattern-name {
+  font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;
+}
+.pattern-desc { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; }
+
+.guide-list {
+  margin: 0; padding-left: var(--space-lg);
+  display: flex; flex-direction: column; gap: var(--space-sm);
+}
+.guide-list li { font-size: 0.9rem; }
+.guide-list strong { color: var(--text-primary); }
+
+.guide-tip {
+  margin-top: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--accent-subtle);
+  border: 1px solid rgba(99,102,241,0.12);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem; color: var(--accent-hover);
 }
 
 .mono {

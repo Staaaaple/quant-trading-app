@@ -109,6 +109,17 @@ def list_all_dna(
     db: Session = Depends(get_db),
 ):
     """List all DNA summaries for the ecosystem dashboard."""
+    from app.services.portfolio_ecosystem_adapter import ensure_ecosystem_data_from_latest_portfolios
+    from app.models.strategy_dna import StrategyDNA
+
+    # 如果没有 DNA 数据，尝试从已有组合中自动迁移
+    if db.query(StrategyDNA).filter(StrategyDNA.status == "success").count() == 0:
+        try:
+            ensure_ecosystem_data_from_latest_portfolios(db)
+        except Exception as e:
+            print(f"[DNA API] 自动接入组合数据失败: {e}")
+            db.rollback()
+
     from app.models.strategy import Strategy
     from app.models.strategy_dna import StrategyPhylogeny
     dnas = dna_sequencer.get_all_dnas(db)

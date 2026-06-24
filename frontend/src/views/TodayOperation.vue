@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import LegalNotice from '@/components/LegalNotice.vue'
 
 interface Operation {
   symbol: string
@@ -160,6 +161,15 @@ function getActionIcon(action: string) {
     </header>
 
     <!-- Market Brief -->
+    <LegalNotice
+      title="今日操作声明"
+      :show-data-source="true"
+      :show-investment-disclaimer="true"
+      :show-privacy="true"
+      :show-license="true"
+      :show-crawler="false"
+    />
+
     <div class="market-brief">
       <div class="brief-icon">📊</div>
       <div class="brief-text">{{ pushData.market_brief }}</div>

@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import re
 import tempfile
 import traceback
 import uuid
@@ -8,6 +9,7 @@ from typing import Any
 
 import akquant
 import akshare as ak
+import numpy as np
 import pandas as pd
 import requests
 from sqlalchemy.orm import Session
@@ -17,6 +19,8 @@ from app.models.strategy import Strategy
 from app.models.strategy_flow import StrategyFlow
 from app.schemas.backtest import BacktestCreate, BacktestUpdate
 from app.services import stock_picker_service, strategy_flow_service, risk_strategy_service
+from app.core.config import settings
+
 
 
 class AkshareProxyError(Exception):
@@ -42,6 +46,7 @@ def get_backtests(db: Session, skip: int = 0, limit: int = 100):
 def create_backtest_record(db: Session, obj_in: BacktestCreate):
     db_obj = BacktestResult(
         backtest_id=obj_in.backtest_id,
+        user_id=obj_in.user_id,
         strategy_id=obj_in.strategy_id,
         status=obj_in.status,
         start_date=obj_in.start_date,
@@ -210,11 +215,41 @@ def _fetch_from_sina(symbol: str, start_date: str, end_date: str, period: str = 
     return _normalize_akquant_df(df, symbol)
 
 
+def _fetch_mock_data(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+    """生成模拟 K 线数据作为开发/测试回退."""
+    dates = pd.date_range(start=start_date, end=end_date, freq='B')
+    if len(dates) == 0:
+        dates = pd.DatetimeIndex([pd.Timestamp(start_date)])
+    np.random.seed(hash(symbol) % 2**32)
+    base_price = 100.0
+    data = []
+    for i, date in enumerate(dates):
+        if i == 0:
+            open_p = base_price
+        else:
+            open_p = data[-1]['close']
+        change = np.random.normal(0, 0.015)
+        close = open_p * (1 + change)
+        high = max(open_p, close) * (1 + abs(np.random.normal(0, 0.008)))
+        low = min(open_p, close) * (1 - abs(np.random.normal(0, 0.008)))
+        volume = int(np.random.uniform(1_000_000, 10_000_000))
+        data.append({
+            'timestamp': date,
+            'open': round(open_p, 2),
+            'high': round(high, 2),
+            'low': round(low, 2),
+            'close': round(close, 2),
+            'volume': volume,
+        })
+    df = pd.DataFrame(data)
+    return _normalize_akquant_df(df, symbol)
+
+
 def fetch_stock_data(symbol: str, start_date: str, end_date: str, period: str = "daily") -> pd.DataFrame:
     """通过 akshare 获取股票历史K线数据并标准化为 akquant 可用格式.
 
     优先使用东方财富接口，失败时自动回退到新浪财经接口。
-    若所有数据源均失败，抛出细分异常供上层返回友好错误信息。
+    若所有数据源均失败，开发环境下使用模拟数据回退。
 
     :param period: 数据周期，目前支持 "daily"（日线），东财额外支持 "weekly"/"monthly"
     """
@@ -236,6 +271,11 @@ def fetch_stock_data(symbol: str, start_date: str, end_date: str, period: str = 
         is_proxy_error = True
     except Exception as e:
         last_error = e
+
+    if settings.BACKTEST_DEMO_FALLBACK:
+        import logging
+        logging.warning(f"[MOCK] 数据源不可用，使用模拟数据回退: {symbol} ({start_date} ~ {end_date})")
+        return _fetch_mock_data(symbol, start_date, end_date)
 
     if is_proxy_error:
         raise AkshareProxyError(
@@ -397,6 +437,45 @@ class BuyHoldBenchmark(Strategy):
             self._bought = True
 '''
 
+DEFAULT_DEMO_STRATEGY_CODE = '''from akquant import Strategy
+
+class DemoStrategy(Strategy):
+    def __init__(self):
+        super().__init__()
+        self._bought = False
+
+    def on_bar(self, bar):
+        if not self._bought:
+            symbols = {symbols!r}
+            weight = 0.95 / len(symbols) if symbols else 0.95
+            for sym in symbols:
+                self.order_target_percent(weight, sym)
+            self._bought = True
+'''
+
+
+def _get_demo_strategy_code(symbols: list[str]) -> str:
+    """生成使用指定标的的 Demo 策略代码."""
+    return DEFAULT_DEMO_STRATEGY_CODE.format(symbols=symbols)
+
+
+def _strategy_code_is_placeholder(code: str | None) -> bool:
+    """判断策略代码是否为占位符或无法运行."""
+    if not code or not code.strip():
+        return True
+    stripped = code.strip()
+    if stripped.startswith('# Auto-generated placeholder'):
+        return True
+    if 'class' not in stripped and 'def on_bar' not in stripped:
+        return True
+    return False
+
+
+def _extract_strategy_class_name(code: str) -> str:
+    """从策略源码中提取继承自 Strategy 的类名，用于 akquant loader."""
+    match = re.search(r"class\s+(\w+)\s*\(\s*Strategy\s*\)", code)
+    return match.group(1) if match else "DemoStrategy"
+
 
 def _run_benchmark(data_input, symbols: list[str], initial_cash: float, start_date: str, end_date: str) -> dict[str, Any]:
     """运行买入并持有基准回测."""
@@ -406,6 +485,7 @@ def _run_benchmark(data_input, symbols: list[str], initial_cash: float, start_da
         result = akquant.run_backtest(
             data=data_input,
             strategy_source=tmp_path,
+            strategy_attr=_extract_strategy_class_name(code),
             symbols=symbols,
             initial_cash=initial_cash,
             start_time=start_date,
@@ -507,12 +587,19 @@ def run_backtest_for_strategy(
             data_input = data_frames
 
         # 写入策略临时文件
-        tmp_path = _write_strategy_to_temp_file(db_strategy.code)
+        strategy_code = db_strategy.code if db_strategy else ""
+        is_placeholder = _strategy_code_is_placeholder(strategy_code)
+        if settings.BACKTEST_DEMO_FALLBACK and is_placeholder:
+            import logging
+            logging.warning(f"[MOCK] 策略 {strategy_id} 代码为占位符，使用 Demo 策略回退")
+            strategy_code = _get_demo_strategy_code(symbols)
+        tmp_path = _write_strategy_to_temp_file(strategy_code)
 
         # 运行回测
         result = akquant.run_backtest(
             data=data_input,
             strategy_source=tmp_path,
+            strategy_attr=_extract_strategy_class_name(strategy_code),
             symbols=symbols,
             initial_cash=initial_cash,
             start_time=start_date,

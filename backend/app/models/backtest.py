@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, JSON, ForeignKey
 from app.db.base import Base
 
 
@@ -8,6 +8,7 @@ class BacktestResult(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     backtest_id = Column(String(64), unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     strategy_id = Column(String(64), index=True, nullable=False)
     status = Column(String(16), default="pending")  # pending / running / success / failed
     start_date = Column(String(16), nullable=True)

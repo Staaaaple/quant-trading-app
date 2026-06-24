@@ -22,12 +22,13 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
-# ═══════════════════════════════════════════════════════════════
-# 1. 压力测试场景定义
-# ═══════════════════════════════════════════════════════════════
+# 导入放在函数内避免循环导入
+ADOPTION_CONFIDENCE_THRESHOLD = getattr(settings, "ADOPTION_CONFIDENCE_THRESHOLD", 0.65)
 
 @dataclass
 class StressScenario:
@@ -438,27 +439,45 @@ def evaluate_portfolio_reliability_v2(
     Returns:
         完整可靠性评估
     """
-    from app.services.buy_hold_benchmark import validate_portfolio_against_benchmark
+    from app.services.buy_hold_benchmark import (
+        validate_portfolio_against_benchmark,
+        compare_portfolio_to_benchmarks,
+    )
 
-    base_confidence = 0.6
+    # ── 多基准综合评分作为置信度核心输入 ──
+    benchmark_comparison = None
+    benchmark_score = 0.5  # 默认中性
+    if backtest_results and saa_weights:
+        try:
+            benchmark_comparison = compare_portfolio_to_benchmarks(
+                portfolio_bindings=bindings,
+                saa_weights=saa_weights,
+                backtest_results=backtest_results,
+            )
+            benchmark_score = benchmark_comparison.get("overall_score", 0.5)
+        except Exception as e:
+            logger.warning(f"[Reliability] 多基准对比失败: {e}")
+
+    # 把 0-1 的 benchmark_score 映射到 0.2-0.8 的基础置信度
+    base_confidence = 0.2 + benchmark_score * 0.6
 
     n_strategies = len(bindings)
     if n_strategies >= 5:
-        base_confidence += 0.1
+        base_confidence += 0.05
     elif n_strategies < 3:
-        base_confidence -= 0.1
+        base_confidence -= 0.05
 
     stop_loss = risk_config.get("stop_loss", 0.08)
     max_drawdown = risk_config.get("max_drawdown", 0.15)
     if stop_loss <= 0.05:
-        base_confidence += 0.05
+        base_confidence += 0.03
     if max_drawdown <= 0.1:
-        base_confidence += 0.05
+        base_confidence += 0.03
 
     if market_cycle in ["expansion", "recovery"]:
-        base_confidence += 0.05
+        base_confidence += 0.02
     elif market_cycle in ["contraction", "peak"]:
-        base_confidence -= 0.05
+        base_confidence -= 0.02
 
     result = {
         "backtest_available": True,
@@ -468,7 +487,10 @@ def evaluate_portfolio_reliability_v2(
         "reliability_level": _get_reliability_level(base_confidence),
     }
 
-    # ── 买入持有基准校验 ──
+    if benchmark_comparison is not None:
+        result["benchmark_comparison"] = benchmark_comparison
+
+    # ── 买入持有基准校验（保留作为明细参考） ──
     benchmark_validation = None
     if backtest_results and saa_weights:
         try:
@@ -477,13 +499,6 @@ def evaluate_portfolio_reliability_v2(
                 saa_weights=saa_weights,
                 backtest_results=backtest_results,
             )
-            if not benchmark_validation.get("passed", True):
-                base_confidence -= 0.3
-                logger.warning(
-                    f"[Reliability] 组合未通过买入持有基准校验"
-                )
-            else:
-                base_confidence += 0.05
             result["benchmark_validation"] = benchmark_validation
             result["passed_benchmark"] = benchmark_validation.get("passed", True)
         except Exception as e:
@@ -556,9 +571,24 @@ def evaluate_portfolio_reliability_v2(
         except Exception as e:
             logger.warning(f"[Reliability] 蒙特卡洛失败: {e}")
 
-    confidence = max(0.1, min(0.95, base_confidence))
-    result["confidence"] = round(confidence, 2)
+    confidence = max(0.05, min(0.95, base_confidence))
+    confidence = round(confidence, 4)
+    result["confidence"] = confidence
     result["reliability_level"] = _get_reliability_level(confidence)
+
+    # ── 采纳状态 ──
+    adopted = confidence >= ADOPTION_CONFIDENCE_THRESHOLD
+    if adopted:
+        reason = f"置信度 {confidence:.1%} 达到采纳阈值 {ADOPTION_CONFIDENCE_THRESHOLD:.1%}，建议采纳"
+    else:
+        reason = f"置信度 {confidence:.1%} 未达到采纳阈值 {ADOPTION_CONFIDENCE_THRESHOLD:.1%}，建议调整后再评估"
+
+    result["adoption_status"] = {
+        "adopted": bool(adopted),
+        "threshold": ADOPTION_CONFIDENCE_THRESHOLD,
+        "confidence": confidence,
+        "reason": reason,
+    }
 
     return result
 

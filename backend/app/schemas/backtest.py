@@ -5,6 +5,7 @@ from typing import Any
 
 class BacktestBase(BaseModel):
     backtest_id: str
+    user_id: int | None = None
     strategy_id: str
     status: str = "pending"
     start_date: str | None = None

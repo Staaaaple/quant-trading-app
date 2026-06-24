@@ -10,9 +10,10 @@
 """
 
 import asyncio
+import copy
 import datetime
 import logging
-from typing import Any
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +24,26 @@ from app.services.rag.adjustment_engine import apply_adjustments
 from app.services.assets import (
     SECTOR_ETF_MAP, SECTOR_STOCK_MAP, BOND_ETF_MAP,
     COMMODITY_ETF_MAP, CASH_FUND_MAP, BACKTEST_PERIODS,
-    get_sector_etf, get_sector_stocks, get_bond_etf, get_cash_fund
+    get_sector_etf, get_sector_stocks, get_bond_etf, get_commodity_etf, get_cash_fund
 )
 from app.services.dynamic_picker.dynamic_stock_picker import DynamicStockPicker
+
+
+# 进度回调类型
+ProgressCallback = Optional[Callable[[dict[str, Any]], None]]
+
+
+async def _notify(callback: ProgressCallback, event: dict[str, Any]) -> None:
+    """安全地调用进度回调."""
+    if callback is None:
+        return
+    try:
+        if asyncio.iscoroutinefunction(callback):
+            await callback(event)
+        else:
+            callback(event)
+    except Exception as e:
+        logger.warning(f"[ProgressCallback] 通知失败: {e}")
 
 
 # 策略模板池 — 从 strategy_discovery_final 加载真实策略
@@ -34,6 +52,41 @@ try:
     from app.services.strategy_discovery_final import STRATEGY_TEMPLATES as DEFAULT_STRATEGY_TEMPLATES
 except ImportError:
     DEFAULT_STRATEGY_TEMPLATES = []
+
+# 兜底策略池（当 strategy_discovery_final 未提供策略模板时使用）
+if not DEFAULT_STRATEGY_TEMPLATES:
+    DEFAULT_STRATEGY_TEMPLATES = [
+        {
+            "id": "trend_ema_cross",
+            "name": "EMA趋势跟踪",
+            "family": "trend",
+            "params": {"fast": 5, "slow": 20},
+        },
+        {
+            "id": "momentum_rsi",
+            "name": "RSI动量反转",
+            "family": "momentum",
+            "params": {"rsi_period": 14, "oversold": 30, "overbought": 70},
+        },
+        {
+            "id": "mean_reversion_bollinger",
+            "name": "布林带均值回归",
+            "family": "mean_reversion",
+            "params": {"window": 20, "std": 2},
+        },
+        {
+            "id": "breakout_volatility",
+            "name": "波动率突破",
+            "family": "breakout",
+            "params": {"lookback": 20, "atr_mult": 1.5},
+        },
+        {
+            "id": "multi_factor_value",
+            "name": "多因子价值",
+            "family": "multi_factor",
+            "params": {"factors": ["pe", "pb", "roe"]},
+        },
+    ]
 
 
 async def design_portfolio_v2(
@@ -45,6 +98,7 @@ async def design_portfolio_v2(
     use_dynamic_picker: bool = True,
     rag_service=None,
     llm_service=None,
+    progress_callback: ProgressCallback = None,
 ) -> dict[str, Any]:
     """设计完整投资组合（RAG质检版 + 动态选股）.
 
@@ -65,20 +119,35 @@ async def design_portfolio_v2(
     adjustments_log = []
     needs_rebacktest = []
 
+    await _notify(progress_callback, {
+        "type": "progress",
+        "step": "start",
+        "message": "启动 Hybrid + RAG 组合设计引擎",
+        "progress": 0.02,
+    })
+
     # 初始化动态选股引擎
     dynamic_picker = None
     if use_dynamic_picker:
         dynamic_picker = DynamicStockPicker(
             rag_service=rag_service,
             llm_service=llm_service,
-            pool_size=200,
-            filter_target_size=50,
-            select_target_count=target_count * 3,  # 多选一些供后续筛选
+            pool_size=15,
+            filter_target_size=10,
+            select_target_count=target_count * 2,
+            enrich_max_concurrent=30,
         )
 
     # =====================================================================
     # Step 1: SAA — 战略资产配置
     # =====================================================================
+    await _notify(progress_callback, {
+        "type": "progress",
+        "step": "saa",
+        "message": "Step 1/6: 计算战略资产配置 (SAA)",
+        "progress": 0.05,
+    })
+
     risk_level = get_risk_level_from_profile(profile_vector)
     market_cycle = get_market_cycle_from_signal(market_signal)
     macro_score = market_signal.get("macro_score", 0.5)
@@ -93,6 +162,13 @@ async def design_portfolio_v2(
 
     # RAG质检1: SAA微调（市场信号驱动，循环审核）
     if use_rag_gate and quality_gate:
+        await _notify(progress_callback, {
+            "type": "progress",
+            "step": "saa_review",
+            "message": "RAG 审核: SAA 战略资产配置",
+            "progress": 0.12,
+        })
+
         # 构建风险画像硬约束
         base_profile = RISK_PROFILES.get(risk_level, RISK_PROFILES["moderate"]).copy()
         # 市场周期调整上限
@@ -143,6 +219,13 @@ async def design_portfolio_v2(
     # =====================================================================
     # Step 2: TAA — 战术资产配置
     # =====================================================================
+    await _notify(progress_callback, {
+        "type": "progress",
+        "step": "taa",
+        "message": "Step 2/6: 计算战术资产配置 (TAA)",
+        "progress": 0.22,
+    })
+
     industry_scores = market_signal.get("industry_scores", {})
     social_trends = market_signal.get("social_trends", [])
 
@@ -156,6 +239,13 @@ async def design_portfolio_v2(
 
     # RAG质检2: TAA审核（循环审核）
     if use_rag_gate and quality_gate:
+        await _notify(progress_callback, {
+            "type": "progress",
+            "step": "taa_review",
+            "message": "RAG 审核: TAA 战术资产配置",
+            "progress": 0.30,
+        })
+
         max_taa_retries = PortfolioQualityGate.MAX_RETRIES[ReviewStep.TAA]
         for retry in range(max_taa_retries + 1):
             review = await quality_gate.review_taa(
@@ -183,6 +273,13 @@ async def design_portfolio_v2(
     # =====================================================================
     # Step 3: 策略-标的绑定 + 回测验证
     # =====================================================================
+    await _notify(progress_callback, {
+        "type": "progress",
+        "step": "binding",
+        "message": "Step 3/6: 策略-标的绑定与动态选股",
+        "progress": 0.38,
+    })
+
     strategies = strategy_pool or DEFAULT_STRATEGY_TEMPLATES
     top_sectors = get_top_sectors(taa_result, n=target_count)
 
@@ -190,6 +287,12 @@ async def design_portfolio_v2(
     selected_stocks = []
     dynamic_picking_result = None
     if use_dynamic_picker and dynamic_picker:
+        await _notify(progress_callback, {
+            "type": "progress",
+            "step": "dynamic_picker",
+            "message": "动态选股: 构建标的池 → 多维度筛选 → LLM 精选",
+            "progress": 0.42,
+        })
         try:
             dynamic_picking_result = await dynamic_picker.pick(
                 top_sectors=top_sectors,
@@ -205,46 +308,46 @@ async def design_portfolio_v2(
 
     # 初始绑定
     bindings = []
-    for i, sector_info in enumerate(top_sectors):
-        if i < len(strategies):
-            strategy = strategies[i]
-            sector = sector_info["sector"]
+    used_stocks = set()
 
-            if selected_stocks:
-                # === 动态选股模式 ===
-                # 主仓位：该行业的ETF（按LLM评分选最优）
-                sector_etfs = [
-                    s for s in selected_stocks
-                    if s.sector == sector and s.asset_class == "ETF"
-                ]
-                if sector_etfs:
-                    best_etf = max(sector_etfs, key=lambda s: s.llm_score)
+    # 按 sector 分配权重：ETF 70% + 个股 30%（仅 sector 权重>15% 时配个股）
+    # 确保每个 sector 内部 ETF + 个股 = sector_info["weight"]
+    for i, sector_info in enumerate(top_sectors):
+        if i >= len(strategies):
+            break
+        strategy = strategies[i]
+        sector = sector_info["sector"]
+        sector_weight = sector_info["weight"]
+
+        sector_selected = [
+            s for s in selected_stocks
+            if s.sector == sector and s.symbol not in used_stocks
+        ]
+        sector_etfs = [s for s in sector_selected if s.asset_class == "ETF"]
+        sector_stocks = [s for s in sector_selected if s.asset_class == "stock"]
+
+        # 较重要的 sector 都尝试配个股（卫星），降低阈值到 10%
+        use_dynamic_stock = sector_weight > 0.10 and len(sector_stocks) > 0
+        use_fallback_stock = sector_weight > 0.10 and not use_dynamic_stock
+        stock_ratio = 0.3 if (use_dynamic_stock or use_fallback_stock) else 0.0
+        etf_ratio = 1.0 - stock_ratio
+
+        # ETF 绑定（核心）
+        if etf_ratio > 0:
+            if sector_etfs:
+                best_etf = max(sector_etfs, key=lambda s: s.llm_score)
+                used_stocks.add(best_etf.symbol)
+                bindings.append(_make_binding(
+                    sector_info, strategy, best_etf, "ETF",
+                    weight=sector_weight * etf_ratio
+                ))
+            else:
+                etf_info = get_sector_etf(sector)
+                if etf_info:
                     bindings.append({
                         "sector": sector,
                         "sector_name": sector_info["name"],
-                        "weight": sector_info["weight"],
-                        "strategy_id": strategy["id"],
-                        "strategy_name": strategy["name"],
-                        "strategy_family": strategy["family"],
-                        "strategy_params": strategy.get("params", {}),
-                        "symbol": best_etf.symbol,
-                        "name": best_etf.name,
-                        "asset_class": "ETF",
-                        "llm_score": best_etf.llm_score,
-                        "llm_confidence": best_etf.llm_confidence,
-                        "reasoning": best_etf.reasoning,
-                        "risks": best_etf.risks,
-                        "recommendation": best_etf.recommendation,
-                        "data_source": "dynamic_picker: " + "; ".join(best_etf.data_sources),
-                        "composite_score": best_etf.composite_score,
-                    })
-                else:
-                    # 动态选股未覆盖，fallback到静态映射
-                    etf_info = get_sector_etf(sector)
-                    bindings.append({
-                        "sector": sector,
-                        "sector_name": sector_info["name"],
-                        "weight": sector_info["weight"],
+                        "weight": round(sector_weight * etf_ratio, 4),
                         "strategy_id": strategy["id"],
                         "strategy_name": strategy["name"],
                         "strategy_family": strategy["family"],
@@ -252,63 +355,29 @@ async def design_portfolio_v2(
                         "symbol": etf_info["symbol"],
                         "name": etf_info["name"],
                         "asset_class": "ETF",
+                        "satellite": False,
                         "data_source": etf_info["source"] + " (fallback)",
                     })
 
-                # 卫星仓位：该行业的个股（权重大于15%时加配30%）
-                if sector_info["weight"] > 0.15:
-                    sector_stocks = [
-                        s for s in selected_stocks
-                        if s.sector == sector and s.asset_class == "stock"
-                    ]
-                    if sector_stocks:
-                        best_stock = max(sector_stocks, key=lambda s: s.llm_score)
-                        bindings.append({
-                            "sector": sector,
-                            "sector_name": sector_info["name"],
-                            "weight": sector_info["weight"] * 0.3,
-                            "strategy_id": strategy["id"],
-                            "strategy_name": strategy["name"],
-                            "strategy_family": strategy["family"],
-                            "strategy_params": strategy.get("params", {}),
-                            "symbol": best_stock.symbol,
-                            "name": best_stock.name,
-                            "asset_class": "stock",
-                            "llm_score": best_stock.llm_score,
-                            "llm_confidence": best_stock.llm_confidence,
-                            "reasoning": best_stock.reasoning,
-                            "risks": best_stock.risks,
-                            "recommendation": best_stock.recommendation,
-                            "data_source": "dynamic_picker: " + "; ".join(best_stock.data_sources),
-                            "composite_score": best_stock.composite_score,
-                        })
-            else:
-                # === 静态映射模式（fallback） ===
-                etf_info = get_sector_etf(sector)
+        # 个股绑定（卫星）
+        if stock_ratio > 0:
+            if use_dynamic_stock and sector_stocks:
+                best_stock = max(sector_stocks, key=lambda s: s.llm_score)
+                used_stocks.add(best_stock.symbol)
+                bindings.append(_make_binding(
+                    sector_info, strategy, best_stock, "stock",
+                    weight=sector_weight * stock_ratio,
+                    satellite=True
+                ))
+            elif use_fallback_stock:
                 stocks = get_sector_stocks(sector, n=1)
-
-                # ETF绑定（主力）
-                bindings.append({
-                    "sector": sector,
-                    "sector_name": sector_info["name"],
-                    "weight": sector_info["weight"],
-                    "strategy_id": strategy["id"],
-                    "strategy_name": strategy["name"],
-                    "strategy_family": strategy["family"],
-                    "strategy_params": strategy.get("params", {}),
-                    "symbol": etf_info["symbol"],
-                    "name": etf_info["name"],
-                    "asset_class": "ETF",
-                    "data_source": etf_info["source"],
-                })
-
-                # 如果该行业权重大，加配龙头股（卫星）
-                if sector_info["weight"] > 0.15 and stocks:
+                if stocks:
                     stock = stocks[0]
+                    used_stocks.add(stock["symbol"])
                     bindings.append({
                         "sector": sector,
                         "sector_name": sector_info["name"],
-                        "weight": sector_info["weight"] * 0.3,
+                        "weight": round(sector_weight * stock_ratio, 4),
                         "strategy_id": strategy["id"],
                         "strategy_name": strategy["name"],
                         "strategy_family": strategy["family"],
@@ -316,14 +385,99 @@ async def design_portfolio_v2(
                         "symbol": stock["symbol"],
                         "name": stock["name"],
                         "asset_class": "stock",
-                        "data_source": stock["source"],
+                        "satellite": True,
+                        "data_source": stock["source"] + " (fallback)",
                     })
 
+    # 未匹配的选股结果：当前 sector 权重已分配完毕，记录日志即可
+    unmatched = [s for s in selected_stocks if s.symbol not in used_stocks]
+    if unmatched:
+        logger.info(f"动态选股未匹配标的: {len(unmatched)} 只，已按 sector 完成权重分配")
+
+    # 添加债券/商品/现金绑定，使整个组合权重总和 = 100%
+    saa_weights = saa_result.get("weights", {})
+
+    bond_weight = saa_weights.get("bond", 0)
+    if bond_weight > 0:
+        bond_etf = get_bond_etf("treasury_1y")
+        bindings.append({
+            "sector": "bond",
+            "sector_name": "债券",
+            "weight": round(bond_weight, 4),
+            "strategy_id": "bond_hold",
+            "strategy_name": "债券配置",
+            "strategy_family": "fixed_income",
+            "strategy_params": {},
+            "symbol": bond_etf["symbol"],
+            "name": bond_etf["name"],
+            "asset_class": "bond",
+            "satellite": False,
+            "data_source": bond_etf["source"],
+        })
+
+    commodity_weight = saa_weights.get("commodity", 0)
+    if commodity_weight > 0:
+        commodity_etf = get_commodity_etf("gold")
+        bindings.append({
+            "sector": "commodity",
+            "sector_name": "商品",
+            "weight": round(commodity_weight, 4),
+            "strategy_id": "commodity_hold",
+            "strategy_name": "黄金配置",
+            "strategy_family": "commodity",
+            "strategy_params": {},
+            "symbol": commodity_etf["symbol"],
+            "name": commodity_etf["name"],
+            "asset_class": "commodity",
+            "satellite": False,
+            "data_source": commodity_etf["source"],
+        })
+
+    cash_weight = saa_weights.get("cash", 0)
+    if cash_weight > 0:
+        cash_fund = get_cash_fund("yin_hua_ri_li")
+        bindings.append({
+            "sector": "cash",
+            "sector_name": "现金",
+            "weight": round(cash_weight, 4),
+            "strategy_id": "cash_hold",
+            "strategy_name": "货币基金",
+            "strategy_family": "cash",
+            "strategy_params": {},
+            "symbol": cash_fund["symbol"],
+            "name": cash_fund["name"],
+            "asset_class": "cash",
+            "satellite": False,
+            "data_source": cash_fund["source"],
+        })
+
+    # 最终归一化：修正浮点误差，确保总权重严格等于 1.0
+    total_weight = sum(b["weight"] for b in bindings)
+    if total_weight > 0 and abs(total_weight - 1.0) > 0.001:
+        scale = 1.0 / total_weight
+        for b in bindings:
+            b["weight"] = round(b["weight"] * scale, 4)
+
+    logger.info(f"绑定完成: {len(bindings)} 只标的，总权重: {sum(b['weight'] for b in bindings):.4f}")
+
     # 回测验证（必须跑赢买入持有）
+    await _notify(progress_callback, {
+        "type": "progress",
+        "step": "backtest",
+        "message": "回测验证: 对绑定标的运行历史回测",
+        "progress": 0.55,
+    })
     backtest_results = await _run_backtests(bindings)
 
     # RAG质检3: 绑定审核（回测驱动）
     if use_rag_gate and quality_gate:
+        await _notify(progress_callback, {
+            "type": "progress",
+            "step": "binding_review",
+            "message": "RAG 审核: 策略-标的绑定",
+            "progress": 0.62,
+        })
+
         max_binding_retries = PortfolioQualityGate.MAX_RETRIES[ReviewStep.BINDING]
         for retry in range(max_binding_retries):
             review = await quality_gate.review_bindings(
@@ -351,10 +505,23 @@ async def design_portfolio_v2(
     # =====================================================================
     # Step 4: 风控配置
     # =====================================================================
+    await _notify(progress_callback, {
+        "type": "progress",
+        "step": "risk_config",
+        "message": "Step 4/6: 生成风控配置",
+        "progress": 0.68,
+    })
     risk_config = _generate_risk_config(profile_vector, saa_result)
 
     # RAG质检4: 风控审核（循环审核）
     if use_rag_gate and quality_gate:
+        await _notify(progress_callback, {
+            "type": "progress",
+            "step": "risk_review",
+            "message": "RAG 审核: 风控配置",
+            "progress": 0.72,
+        })
+
         max_risk_retries = PortfolioQualityGate.MAX_RETRIES[ReviewStep.RISK_CONFIG]
         for retry in range(max_risk_retries + 1):
             review = await quality_gate.review_risk_config(
@@ -384,6 +551,12 @@ async def design_portfolio_v2(
     # =====================================================================
     # Step 5: 可靠性评估（严格标准 + 买入持有基准校验 + 压力测试 + 蒙特卡洛）
     # =====================================================================
+    await _notify(progress_callback, {
+        "type": "progress",
+        "step": "reliability",
+        "message": "Step 5/6: 可靠性评估（回测 + 压力测试 + 蒙特卡洛）",
+        "progress": 0.78,
+    })
     # 构建历史收益率DataFrame（用于压力测试和蒙特卡洛）
     historical_returns = _build_historical_returns_df(backtest_results)
 
@@ -399,6 +572,13 @@ async def design_portfolio_v2(
 
     # RAG质检5: 可靠性审核（严格，不降低标准）
     if use_rag_gate and quality_gate:
+        await _notify(progress_callback, {
+            "type": "progress",
+            "step": "reliability_review",
+            "message": "RAG 审核: 组合可靠性",
+            "progress": 0.84,
+        })
+
         max_reliability_retries = PortfolioQualityGate.MAX_RETRIES[ReviewStep.RELIABILITY]
         for retry in range(max_reliability_retries):
             review = await quality_gate.review_reliability(
@@ -438,12 +618,20 @@ async def design_portfolio_v2(
     # =====================================================================
     # Step 6: 组合寿命计算
     # =====================================================================
+    await _notify(progress_callback, {
+        "type": "progress",
+        "step": "lifespan",
+        "message": "Step 6/6: 计算组合寿命与健康度",
+        "progress": 0.90,
+    })
     portfolio_lifespan = _calculate_portfolio_lifespan(bindings)
     portfolio_health = _calculate_portfolio_health(bindings)
 
     # 组装组合
+    adoption_status = reliability.get("adoption_status", {"adopted": False})
     portfolio = {
         "portfolio_id": f"pf_{hash(str(profile_vector)) % 10000:04d}",
+        "adopted": bool(adoption_status.get("adopted", False)),
         "saa": {
             **saa_result,
             "data_source": "saa_engine + rag_quality_gate(llm:mlx/Qwen3-14B)",
@@ -492,6 +680,13 @@ async def design_portfolio_v2(
 
     # RAG质检6: 最终审核（循环审核）
     if use_rag_gate and quality_gate:
+        await _notify(progress_callback, {
+            "type": "progress",
+            "step": "final_review",
+            "message": "RAG 最终审核: 综合评估组合质量",
+            "progress": 0.95,
+        })
+
         max_final_retries = PortfolioQualityGate.MAX_RETRIES[ReviewStep.FINAL]
         for retry in range(max_final_retries + 1):
             review = await quality_gate.final_review(
@@ -523,6 +718,13 @@ async def design_portfolio_v2(
 
     # 添加循环审核统计
     portfolio["rag_loop_stats"] = _calculate_loop_stats(adjustments_log)
+
+    await _notify(progress_callback, {
+        "type": "progress",
+        "step": "done",
+        "message": "组合设计完成",
+        "progress": 1.0,
+    })
 
     return portfolio
 
@@ -562,26 +764,28 @@ async def _run_backtests(bindings: list[dict]) -> dict[str, dict]:
 
         # 获取历史数据
         try:
-            if asset_class == "ETF":
-                # ETF优先读缓存，当前akshare无可用免费ETF历史接口
-                df = cache_get_ohlcv(symbol, start_str, end_str)
-                if df is None or len(df) == 0:
-                    raise ValueError(f"ETF {symbol} 无缓存数据（当前akshare无可用ETF历史接口）")
-                data_source = "data_cache:etf_placeholder"
-            else:  # stock
+            if asset_class == "stock":
+                # 股票通过 data_fetcher 获取
                 df = fetch_stock_data(symbol, start_str, end_str)
                 if df is None or len(df) == 0:
                     raise ValueError(f"No data for {symbol}")
                 data_source = "data_fetcher:sina"
-                # data_fetcher 输出英文列名，统一转换为中文列名以兼容下游
-                df = df.rename(columns={
-                    "date": "日期",
-                    "open": "开盘",
-                    "high": "最高",
-                    "low": "最低",
-                    "close": "收盘",
-                    "volume": "成交量",
-                })
+            else:
+                # ETF/债券/商品/现金 统一通过 data_cache 获取（均为场内基金/ETF）
+                df = cache_get_ohlcv(symbol, start_str, end_str)
+                if df is None or len(df) == 0:
+                    raise ValueError(f"No data for {symbol} ({asset_class})")
+                data_source = f"data_cache:{asset_class}"
+
+            # 统一转换为中文列名以兼容下游
+            df = df.rename(columns={
+                "date": "日期",
+                "open": "开盘",
+                "high": "最高",
+                "low": "最低",
+                "close": "收盘",
+                "volume": "成交量",
+            })
 
             if df is None or len(df) == 0:
                 raise ValueError(f"No data for {symbol}")
@@ -649,6 +853,15 @@ async def _run_backtests(bindings: list[dict]) -> dict[str, dict]:
                     bench_end_str = data_end.strftime("%Y%m%d")
                     if asset_class == "ETF":
                         df_bench = cache_get_ohlcv(benchmark_symbol, bench_start_str, bench_end_str)
+                        if df_bench is not None and len(df_bench) > 0:
+                            df_bench = df_bench.rename(columns={
+                                "date": "日期",
+                                "open": "开盘",
+                                "high": "最高",
+                                "low": "最低",
+                                "close": "收盘",
+                                "volume": "成交量",
+                            })
                     else:
                         df_bench = fetch_stock_data(benchmark_symbol, bench_start_str, bench_end_str)
                         if df_bench is not None and len(df_bench) > 0:
@@ -758,50 +971,37 @@ async def _run_backtests_for_symbols(
 def _exclude_failed_bindings(
     bindings: list[dict],
     backtest_results: dict[str, dict],
+    min_preserve: int = 2,
 ) -> list[dict]:
-    """排除未通过买入持有基准校验的绑定（硬约束）.
+    """标记未通过买入持有基准校验的绑定，但保留所有绑定作为观察仓位.
 
-    检查项:
-    1. 策略累计收益 ≥ 买入持有基准收益 (硬约束，一票否决)
-    2. 超额收益α ≥ 0 (硬约束)
-    3. 任一年度策略收益 ≥ 基准收益 × 0.9
-    4. 最大相对回撤 ≤ 15%
+    改为软约束：不剔除绑定，只附加 backtest_warnings，避免组合功能降级。
     """
     result = []
-    excluded = []
     for b in bindings:
         symbol = b["symbol"]
         bt = backtest_results.get(symbol, {})
 
-        # 硬约束1: 必须跑赢买入持有
-        passed_benchmark = bt.get("passed_benchmark", True)
-        # 硬约束2: α≥0
-        passed_alpha = bt.get("passed_alpha", True)
-        # 硬约束3: 分年度检查
-        passed_yearly = bt.get("passed_yearly", True)
-        # 硬约束4: 相对回撤≤15%
-        passed_relative_dd = bt.get("passed_relative_dd", True)
+        passed_benchmark = bool(bt.get("passed_benchmark", True))
+        passed_alpha = bool(bt.get("passed_alpha", True))
+        passed_yearly = bool(bt.get("passed_yearly", True))
+        passed_relative_dd = bool(bt.get("passed_relative_dd", True))
 
-        if all([passed_benchmark, passed_alpha, passed_yearly, passed_relative_dd]):
-            result.append(b)
-        else:
-            reasons = []
-            if not passed_benchmark:
-                reasons.append(f"跑输基准({bt.get('return', 0):.1f}% < {bt.get('benchmark_return', 0):.1f}%)")
-            if not passed_alpha:
-                reasons.append(f"α<0({bt.get('alpha_return', 0):.1f}%)")
-            if not passed_yearly:
-                reasons.append("单年大幅跑输")
-            if not passed_relative_dd:
-                reasons.append(f"相对回撤超限({bt.get('max_relative_drawdown', 0):.1f}% > 15%)")
-            excluded.append({
-                "symbol": symbol,
-                "name": b.get("name", ""),
-                "reasons": reasons,
-            })
+        reasons = []
+        if not passed_benchmark:
+            reasons.append(f"跑输基准({bt.get('return', 0):.1f}% < {bt.get('benchmark_return', 0):.1f}%)")
+        if not passed_alpha:
+            reasons.append(f"α<0({bt.get('alpha_return', 0):.1f}%)")
+        if not passed_yearly:
+            reasons.append("单年大幅跑输")
+        if not passed_relative_dd:
+            reasons.append(f"相对回撤超限({bt.get('max_relative_drawdown', 0):.1f}% > 15%)")
 
-    if excluded:
-        print(f"[Buy-Hold Filter] 排除 {len(excluded)} 个未通过基准校验的标的: {[e['symbol'] for e in excluded]}")
+        b = copy.deepcopy(b)
+        if reasons:
+            b["backtest_warnings"] = reasons
+            b["data_source"] = b.get("data_source", "") + " (回测未通过，保留观察)"
+        result.append(b)
 
     return result
 
@@ -845,6 +1045,37 @@ def _summarize_backtests(
         "total_backtested": len(backtest_results),
         "all_passed_benchmark": passed_benchmarks == len(backtest_results) and len(backtest_results) > 0,
         "all_passed_alpha": passed_alphas == len(backtest_results) and len(backtest_results) > 0,
+    }
+
+
+def _make_binding(
+    sector_info: dict,
+    strategy: dict,
+    stock,
+    asset_class: str,
+    weight: float,
+    satellite: bool = False,
+) -> dict:
+    """从选股结果构建绑定字典."""
+    return {
+        "sector": sector_info["sector"],
+        "sector_name": sector_info["name"],
+        "weight": round(weight, 4),
+        "strategy_id": strategy["id"],
+        "strategy_name": strategy["name"],
+        "strategy_family": strategy["family"],
+        "strategy_params": strategy.get("params", {}),
+        "symbol": stock.symbol,
+        "name": stock.name,
+        "asset_class": asset_class,
+        "satellite": satellite,
+        "llm_score": getattr(stock, "llm_score", 0),
+        "llm_confidence": getattr(stock, "llm_confidence", "low"),
+        "reasoning": getattr(stock, "reasoning", ""),
+        "risks": getattr(stock, "risks", []),
+        "recommendation": getattr(stock, "recommendation", ""),
+        "data_source": "dynamic_picker: " + "; ".join(getattr(stock, "data_sources", [])),
+        "composite_score": getattr(stock, "composite_score", 0),
     }
 
 

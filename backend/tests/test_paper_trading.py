@@ -1,111 +1,183 @@
-import uuid
-from unittest.mock import patch, MagicMock
+from datetime import date
+
+from tests.conftest import TestingSessionLocal
+from app.models.user import User
+from app.models.portfolio import Portfolio
+from app.models.operation_log import MarketReport
+from app.services import paper_trading_service
 
 
-def test_create_paper_trading_session(client):
-    # 先创建策略
-    strategy_payload = {
-        "strategy_id": "s_pt_001",
-        "name": "Paper Trading Strategy",
-        "code": "from akquant import Strategy\nclass S(Strategy):\n    def on_bar(self, bar): pass",
-    }
-    client.post("/api/v1/strategies/", json=strategy_payload)
-
-    payload = {
-        "session_id": "pt001",
-        "strategy_id": "s_pt_001",
-        "symbols": ["000001"],
-        "initial_cash": 100000.0,
-        "start_date": "2024-01-01",
-        "end_date": "2024-03-01",
-    }
-    resp = client.post("/api/v1/paper-trading/sessions", json=payload)
-    assert resp.status_code == 201, resp.text
-    data = resp.json()
-    assert data["session_id"] == "pt001"
-    assert data["strategy_id"] == "s_pt_001"
-    assert data["symbols"] == ["000001"]
-    assert data["status"] == "idle"
-
-
-def test_list_paper_trading_sessions(client):
-    resp = client.get("/api/v1/paper-trading/sessions")
-    assert resp.status_code == 200
-    assert resp.json() == []
-
-
-def test_run_paper_trading_session_mocked(client):
-    # 创建策略
-    strategy_payload = {
-        "strategy_id": "s_pt_002",
-        "name": "Paper Trading Strategy 2",
-        "code": "from akquant import Strategy\nclass S(Strategy):\n    def on_bar(self, bar): self.buy(symbol='000001', quantity=100)",
-    }
-    client.post("/api/v1/strategies/", json=strategy_payload)
-
-    # 创建 session
-    session_payload = {
-        "session_id": "pt002",
-        "strategy_id": "s_pt_002",
-        "symbols": ["000001"],
-        "initial_cash": 100000.0,
-        "start_date": "2024-01-01",
-        "end_date": "2024-01-10",
-    }
-    client.post("/api/v1/paper-trading/sessions", json=session_payload)
-
-    # Mock 数据获取和 akquant
-    mock_df = MagicMock()
-    mock_order = MagicMock()
-    mock_order.symbol = "000001"
-    mock_order.side = "Buy"
-    mock_order.quantity = 100.0
-    mock_order.price = 10.2
-    mock_order.status = "New"
-
-    mock_result = MagicMock()
-    mock_result.orders = [mock_order]
-    mock_result.trades = []
-
-    with patch("app.services.paper_trading_service.fetch_stock_data", return_value=mock_df):
-        with patch("app.services.paper_trading_service.akquant.run_backtest", return_value=mock_result):
-            resp = client.post("/api/v1/paper-trading/sessions/pt002/run")
-
-    assert resp.status_code == 200, resp.text
-    data = resp.json()
-    assert data["status"] == "success"
-
-    # 验证信号已写入
-    signals_resp = client.get(f"/api/v1/paper-trading/sessions/pt002")
-    assert signals_resp.status_code == 200
-
-
-def test_stop_paper_trading_session(client):
-    strategy_payload = {
-        "strategy_id": "s_pt_003",
-        "name": "Paper Trading Strategy 3",
-        "code": "from akquant import Strategy\nclass S(Strategy):\n    def on_bar(self, bar): pass",
-    }
-    client.post("/api/v1/strategies/", json=strategy_payload)
-
-    session_payload = {
-        "session_id": "pt003",
-        "strategy_id": "s_pt_003",
-        "symbols": ["000001"],
-        "initial_cash": 100000.0,
-    }
-    client.post("/api/v1/paper-trading/sessions", json=session_payload)
-
-    # 直接更新状态为 running 再 stop（使用测试数据库会话）
-    from tests.conftest import TestingSessionLocal
-    from app.services import paper_trading_service
-    db = TestingSessionLocal()
-    db_obj = paper_trading_service.get_session(db, "pt003")
-    db_obj.status = "running"
+def _setup_user_and_portfolio(db):
+    user = User(name="测试用户", is_active=True)
+    db.add(user)
     db.commit()
-    db.close()
+    db.refresh(user)
+    portfolio = Portfolio(user_id=user.id, name="测试组合", is_active=True)
+    db.add(portfolio)
+    db.commit()
+    db.refresh(portfolio)
+    return user, portfolio
 
-    resp = client.post("/api/v1/paper-trading/sessions/pt003/stop")
-    assert resp.status_code == 200, resp.text
+
+def test_sync_daily_record_from_report(client):
+    db = TestingSessionLocal()
+    user, portfolio = _setup_user_and_portfolio(db)
+
+    report = MarketReport(
+        user_id=user.id,
+        portfolio_id=portfolio.id,
+        report_type="daily",
+        report_date="2024-01-02",
+        page2_portfolio_performance={
+            "portfolio_return": 0.01,
+            "asset_performances": [
+                {"symbol": "000001", "daily_return": 0.01, "contribution": 0.01}
+            ],
+        },
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    record = paper_trading_service.sync_daily_record_from_report(
+        db,
+        user_id=user.id,
+        portfolio_id=portfolio.id,
+        report_id=report.id,
+        report_date="2024-01-02",
+        page2=report.page2_portfolio_performance,
+    )
+
+    assert record.daily_return == 0.01
+    assert abs(record.nav - 1.01) < 1e-9
+    assert abs(record.cumulative_return - 0.01) < 1e-9
+
+
+def test_cumulative_return_compounding(client):
+    db = TestingSessionLocal()
+    user, portfolio = _setup_user_and_portfolio(db)
+
+    for i, (d, ret) in enumerate([
+        ("2024-01-02", 0.01),
+        ("2024-01-03", 0.02),
+        ("2024-01-04", -0.005),
+    ]):
+        report = MarketReport(
+            user_id=user.id,
+            portfolio_id=portfolio.id,
+            report_type="daily",
+            report_date=d,
+            page2_portfolio_performance={"portfolio_return": ret},
+        )
+        db.add(report)
+        db.commit()
+        db.refresh(report)
+        paper_trading_service.sync_daily_record_from_report(
+            db,
+            user_id=user.id,
+            portfolio_id=portfolio.id,
+            report_id=report.id,
+            report_date=d,
+            page2=report.page2_portfolio_performance,
+        )
+
+    latest = paper_trading_service.get_latest_daily_record(db, user.id, portfolio.id)
+    expected_nav = 1.01 * 1.02 * 0.995
+    assert abs(latest.nav - expected_nav) < 1e-9
+    assert abs(latest.cumulative_return - (expected_nav - 1)) < 1e-9
+
+
+def test_generate_monthly_stat(client):
+    db = TestingSessionLocal()
+    user, portfolio = _setup_user_and_portfolio(db)
+
+    for d, ret in [
+        ("2024-01-02", 0.01),
+        ("2024-01-03", 0.02),
+        ("2024-01-31", -0.005),
+    ]:
+        report = MarketReport(
+            user_id=user.id,
+            portfolio_id=portfolio.id,
+            report_type="daily",
+            report_date=d,
+            page2_portfolio_performance={"portfolio_return": ret},
+        )
+        db.add(report)
+        db.commit()
+        db.refresh(report)
+        paper_trading_service.sync_daily_record_from_report(
+            db,
+            user_id=user.id,
+            portfolio_id=portfolio.id,
+            report_id=report.id,
+            report_date=d,
+            page2=report.page2_portfolio_performance,
+        )
+
+    stat = paper_trading_service.generate_monthly_stat(db, user.id, portfolio.id, "2024-01")
+    start_nav = 1.01
+    end_nav = 1.01 * 1.02 * 0.995
+    assert abs(stat.monthly_return - (end_nav / start_nav - 1)) < 1e-9
+    assert stat.record_count == 3
+
+
+def test_api_daily_records(client):
+    db = TestingSessionLocal()
+    user, portfolio = _setup_user_and_portfolio(db)
+
+    report = MarketReport(
+        user_id=user.id,
+        portfolio_id=portfolio.id,
+        report_type="daily",
+        report_date="2024-01-02",
+        page2_portfolio_performance={"portfolio_return": 0.005},
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    paper_trading_service.sync_daily_record_from_report(
+        db,
+        user_id=user.id,
+        portfolio_id=portfolio.id,
+        report_id=report.id,
+        report_date="2024-01-02",
+        page2=report.page2_portfolio_performance,
+    )
+
+    resp = client.get("/api/v1/paper-trading/daily-records", headers={"X-User-Id": str(user.id)})
+    assert resp.status_code == 200
     data = resp.json()
-    assert data["status"] == "stopped"
+    assert len(data) == 1
+    assert data[0]["daily_return"] == 0.005
+
+
+def test_api_monthly_stats(client):
+    db = TestingSessionLocal()
+    user, portfolio = _setup_user_and_portfolio(db)
+
+    report = MarketReport(
+        user_id=user.id,
+        portfolio_id=portfolio.id,
+        report_type="daily",
+        report_date="2024-01-02",
+        page2_portfolio_performance={"portfolio_return": 0.01},
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    paper_trading_service.sync_daily_record_from_report(
+        db,
+        user_id=user.id,
+        portfolio_id=portfolio.id,
+        report_id=report.id,
+        report_date="2024-01-02",
+        page2=report.page2_portfolio_performance,
+    )
+    paper_trading_service.generate_monthly_stat(db, user.id, portfolio.id, "2024-01")
+
+    resp = client.get("/api/v1/paper-trading/monthly-stats", headers={"X-User-Id": str(user.id)})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["year_month"] == "2024-01"

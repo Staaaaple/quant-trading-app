@@ -15,6 +15,8 @@ export const useUserStore = defineStore('user', () => {
 
   const isLoggedIn = computed(() => currentUserId.value !== null && currentUser.value !== null)
 
+  const isDemo = computed(() => currentUser.value?.is_demo ?? false)
+
   // ── Actions ──
 
   /** 加载用户列表并恢复当前用户 */
@@ -91,6 +93,24 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /** 进入演示模式：切换用户、重置演示数据并刷新页面 */
+  async function enterDemoMode() {
+    const demoUser = users.value.find(u => u.is_demo)
+    if (!demoUser) {
+      console.error('Demo user not found')
+      return
+    }
+    switchUser(demoUser.id)
+    try {
+      await userApi.resetDemo()
+    } catch (e) {
+      console.error('Failed to reset demo user:', e)
+    }
+    localStorage.removeItem('portfolio_task_id')
+    sessionStorage.removeItem('latest_portfolio')
+    window.location.reload()
+  }
+
   /** 获取当前用户ID（供API调用使用） */
   function getCurrentUserId(): number | null {
     return currentUserId.value
@@ -102,10 +122,12 @@ export const useUserStore = defineStore('user', () => {
     currentUser,
     loading,
     isLoggedIn,
+    isDemo,
     loadUsers,
     switchUser,
     createUser,
     deleteUser,
+    enterDemoMode,
     getCurrentUserId,
   }
 })

@@ -23,16 +23,16 @@ const router = createRouter({
       component: () => import('../views/ProfileWizard.vue'),
     },
     {
-      path: '/profile/result',
-      name: 'profile-result',
-      meta: { titleKey: 'nav.home', layout: 'demo' },
-      component: () => import('../views/ProfileResult.vue'),
-    },
-    {
       path: '/profile/summary',
       name: 'profile-summary',
       meta: { titleKey: 'nav.home', layout: 'demo' },
       component: () => import('../views/ProfileSummary.vue'),
+    },
+    {
+      path: '/market/guide',
+      name: 'market-guide',
+      meta: { titleKey: 'nav.home', layout: 'demo' },
+      component: () => import('../views/MarketGuideView.vue'),
     },
     {
       path: '/market',
@@ -41,10 +41,22 @@ const router = createRouter({
       component: () => import('../views/MarketSignalView.vue'),
     },
     {
+      path: '/portfolio/guide',
+      name: 'portfolio-guide',
+      meta: { titleKey: 'nav.home', layout: 'demo' },
+      component: () => import('../views/PortfolioGuideView.vue'),
+    },
+    {
       path: '/portfolio',
       name: 'portfolio',
       meta: { titleKey: 'nav.home', layout: 'demo' },
       component: () => import('../views/PortfolioBuilder.vue'),
+    },
+    {
+      path: '/portfolio/strategies/guide',
+      name: 'strategy-guide',
+      meta: { titleKey: 'nav.home', layout: 'demo' },
+      component: () => import('../views/StrategyGuideView.vue'),
     },
     {
       path: '/portfolio/strategies',
@@ -59,10 +71,22 @@ const router = createRouter({
       component: () => import('../views/StrategyRecommendation.vue'),
     },
     {
-      path: '/lifespan',
-      name: 'lifespan',
+      path: '/ecosystem',
+      name: 'ecosystem',
       meta: { titleKey: 'nav.home', layout: 'demo' },
-      component: () => import('../views/LifespanCenter.vue'),
+      component: () => import('../views/EcosystemView.vue'),
+    },
+    {
+      path: '/building-guide',
+      name: 'building-guide',
+      meta: { titleKey: 'nav.home', layout: 'demo' },
+      component: () => import('../views/BuildingGuide.vue'),
+    },
+    {
+      path: '/ab-tests',
+      name: 'ab-tests',
+      meta: { titleKey: 'nav.home', layout: 'demo' },
+      component: () => import('../views/ABTestDashboard.vue'),
     },
     {
       path: '/backtests',
@@ -77,22 +101,16 @@ const router = createRouter({
       component: () => import('../views/BacktestDetail.vue'),
     },
     {
-      path: '/onboarding',
-      name: 'onboarding',
-      meta: { titleKey: 'nav.home', layout: 'demo' },
-      component: () => import('../views/OnboardingGuide.vue'),
-    },
-    {
       path: '/today-operation',
       name: 'today-operation',
       meta: { titleKey: 'nav.home', layout: 'demo' },
       component: () => import('../views/TodayOperation.vue'),
     },
     {
-      path: '/weekly-report',
-      name: 'weekly-report',
+      path: '/market-report',
+      name: 'market-report',
       meta: { titleKey: 'nav.home', layout: 'demo' },
-      component: () => import('../views/WeeklyReport.vue'),
+      component: () => import('../views/MarketReport.vue'),
     },
     // Legacy routes (保留原有功能)
     {
@@ -133,12 +151,6 @@ const router = createRouter({
       name: 'paper-trading',
       meta: { titleKey: 'paperTrading.title' },
       component: () => import('../views/PaperTradingMonitor.vue'),
-    },
-    {
-      path: '/manual',
-      name: 'manual',
-      meta: { titleKey: 'manual.title' },
-      component: () => import('../views/UserManual.vue'),
     },
     {
       path: '/strategy-map',

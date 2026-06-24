@@ -5,10 +5,30 @@ from sqlalchemy import func, Integer
 
 from app.models.strategy_dna import StrategyDNA, StrategyPhylogeny
 from app.models.strategy import Strategy
+from app.services.portfolio_ecosystem_adapter import (
+    ensure_ecosystem_data_from_latest_portfolios,
+    ensure_reference_strategies,
+)
 
 
 def get_ecosystem_overview(db: Session) -> dict:
     """Aggregate all ecosystem data for the dashboard."""
+    # 如果没有任何 DNA 数据，尝试从已有组合中迁移
+    dna_count = db.query(StrategyDNA).filter(StrategyDNA.status == "success").count()
+    if dna_count == 0:
+        try:
+            ensure_ecosystem_data_from_latest_portfolios(db)
+        except Exception as e:
+            print(f"[EcosystemService] 自动接入组合数据失败: {e}")
+            db.rollback()
+
+    # 确保常见参考策略存在，用于丰富关系网络
+    try:
+        ensure_reference_strategies(db)
+    except Exception as e:
+        print(f"[EcosystemService] 确保参考策略失败: {e}")
+        db.rollback()
+
     # Basic counts
     total = db.query(StrategyDNA).filter(StrategyDNA.status == "success").count()
 

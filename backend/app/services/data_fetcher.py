@@ -35,8 +35,13 @@ def _add_exchange_prefix(symbol: str) -> str:
     """为需要交易所前缀的接口补充 sh/sz."""
     if symbol.startswith(("sh", "sz")):
         return symbol
-    if symbol.startswith("6"):
+    # 上海：主板 60/68/69、科创板、ETF（50/51/52/56/58/59）
+    if symbol.startswith(("60", "68", "69", "50", "51", "52", "56", "58", "59")):
         return f"sh{symbol}"
+    # 深圳：主板 00、创业板 30、ETF（15/16）、指数 39
+    if symbol.startswith(("00", "30", "39", "15", "16")):
+        return f"sz{symbol}"
+    # 默认深圳
     return f"sz{symbol}"
 
 
@@ -113,25 +118,83 @@ def fetch_from_eastmoney(symbol: str, start: str, end: str) -> pd.DataFrame | No
         return None
 
 
+# ── ETF 数据获取 ──
+
+def fetch_etf_from_eastmoney(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """东方财富ETF接口."""
+    try:
+        df = ak.fund_etf_hist_em(symbol=symbol, period="daily", start_date=start, end_date=end, adjust="qfq")
+        if df is None or df.empty:
+            return None
+
+        col_map = {
+            "日期": "date",
+            "开盘": "open",
+            "最高": "high",
+            "最低": "low",
+            "收盘": "close",
+            "成交量": "volume",
+        }
+        df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+        return df[["date", "open", "high", "low", "close", "volume"]]
+    except Exception as e:
+        print(f"[DataFetcher] Eastmoney ETF failed for {symbol}: {e}")
+        return None
+
+
+def fetch_etf_from_sina(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """新浪ETF接口."""
+    try:
+        sina_symbol = _add_exchange_prefix(symbol)
+        df = ak.fund_etf_hist_sina(symbol=sina_symbol)
+        if df is None or df.empty:
+            return None
+
+        # 确保 date 列是 datetime 类型，与 start/end 一致
+        df["date"] = pd.to_datetime(df["date"])
+        start_dt = pd.to_datetime(start)
+        end_dt = pd.to_datetime(end)
+        df = df[(df["date"] >= start_dt) & (df["date"] <= end_dt)].copy()
+        if df.empty:
+            return None
+
+        df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+        return df[["date", "open", "high", "low", "close", "volume"]]
+    except Exception as e:
+        print(f"[DataFetcher] Sina ETF failed for {symbol}: {e}")
+        return None
+
+
 # ── 统一入口 ──
 
 def fetch_stock_data(symbol: str, start: str, end: str) -> pd.DataFrame | None:
-    """获取股票数据（自动选择可用接口）.
+    """获取股票/ETF数据（自动选择可用接口）.
 
     Args:
-        symbol: 6位股票代码或带前缀代码
+        symbol: 6位股票/ETF代码或带前缀代码
         start: 开始日期 YYYYMMDD 或 YYYY-MM-DD
         end: 结束日期 YYYYMMDD 或 YYYY-MM-DD
 
     Returns:
         DataFrame with [date, open, high, low, close, volume]
     """
-    # 优先新浪（当前可用）
+    # ETF 代码判断
+    if symbol[:2] in ("15", "16", "51", "56", "58", "59"):
+        df = fetch_etf_from_eastmoney(symbol, start, end)
+        if df is not None and not df.empty:
+            return df
+        df = fetch_etf_from_sina(symbol, start, end)
+        if df is not None and not df.empty:
+            return df
+        return None
+
+    # 个股：优先新浪
     df = fetch_from_sina(symbol, start, end)
     if df is not None and not df.empty:
         return df
 
-    # 新浪失败尝试东财（大概率失效，但保留）
+    # 新浪失败尝试东财
     time.sleep(2)
     df = fetch_from_eastmoney(symbol, start, end)
     if df is not None and not df.empty:

@@ -1,0 +1,1 @@
+import{n as e}from"./client-BX3_RpM7.js";var t={getQuestions:()=>e.get(`/profiles/questions`).then(e=>e.data),preview:t=>e.post(`/profiles/preview`,t).then(e=>e.data),create:t=>e.post(`/profiles`,{answers_json:t}).then(e=>e.data),getMine:()=>e.get(`/profiles/me`).then(e=>e.data),update:(t,n)=>e.put(`/profiles/${t}`,{answers_json:n}).then(e=>e.data)};export{t};

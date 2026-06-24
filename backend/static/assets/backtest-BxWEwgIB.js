@@ -1,0 +1,1 @@
+import{r as e}from"./client-BX3_RpM7.js";var t={list(){return e(`/backtests`)},get(t){return e(`/backtests/${t}`)},create(t){return e(`/backtests`,{method:`POST`,body:JSON.stringify(t)})},run(t,n){return e(`/backtests/${t}/run`,{method:`POST`,body:JSON.stringify(n)})},remove(t){return e(`/backtests/${t}`,{method:`DELETE`})}};export{t};

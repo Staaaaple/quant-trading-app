@@ -31,6 +31,11 @@ from app.services.data_cache import get_ohlcv as cache_get_ohlcv
 logger = logging.getLogger(__name__)
 
 
+def _bool(x) -> bool:
+    """将 numpy.bool_ 转为 Python bool，避免 JSON 序列化失败."""
+    return bool(x)
+
+
 # ═══════════════════════════════════════════════════════════════
 # 1. 基准收益计算
 # ═══════════════════════════════════════════════════════════════
@@ -288,7 +293,7 @@ def validate_buy_hold_benchmark(
 
     # ── 检查1: 全周期累计收益 ≥ 基准收益 ──
     excess_return = strategy_return - benchmark_return
-    total_passed = strategy_return >= benchmark_return
+    total_passed = _bool(strategy_return >= benchmark_return)
     checks["total_return_check"] = {
         "passed": total_passed,
         "detail": (
@@ -310,7 +315,7 @@ def validate_buy_hold_benchmark(
             s_ret = strategy_annual_by_year[year]
             b_ret = benchmark_annual_by_year[year]
             threshold = b_ret * 0.9
-            year_passed = s_ret >= threshold
+            year_passed = _bool(s_ret >= threshold)
             annual_details.append({
                 "year": year,
                 "strategy": round(s_ret, 4),
@@ -339,7 +344,7 @@ def validate_buy_hold_benchmark(
     # β近似为1（简化处理，实际应回归计算）
     beta = 1.0
     alpha = strategy_return - beta * benchmark_return
-    alpha_passed = alpha >= 0
+    alpha_passed = _bool(alpha >= 0)
     checks["alpha_check"] = {
         "passed": alpha_passed,
         "detail": f"超额收益α = {alpha:.2%} {'≥' if alpha_passed else '<'} 0",
@@ -358,7 +363,7 @@ def validate_buy_hold_benchmark(
         if excess_std > 0:
             # 年化处理（假设月度数据）
             excess_sharpe = (excess_mean / excess_std) * (12 ** 0.5)
-        excess_sharpe_passed = excess_sharpe >= 0.3
+        excess_sharpe_passed = _bool(excess_sharpe >= 0.3)
         checks["excess_sharpe_check"] = {
             "passed": excess_sharpe_passed,
             "detail": f"超额收益夏普 = {excess_sharpe:.3f} {'≥' if excess_sharpe_passed else '<'} 0.3",
@@ -378,7 +383,7 @@ def validate_buy_hold_benchmark(
     # ── 检查5: 最大相对回撤 ≤ 15% ──
     # 相对回撤 = 策略回撤 - 基准回撤（简化）
     relative_dd = max(0, strategy_drawdown - benchmark_drawdown)
-    relative_dd_passed = relative_dd <= 0.15
+    relative_dd_passed = _bool(relative_dd <= 0.15)
     checks["relative_drawdown_check"] = {
         "passed": relative_dd_passed,
         "detail": f"相对回撤 = {relative_dd:.2%} {'≤' if relative_dd_passed else '>'} 15%",
@@ -423,11 +428,6 @@ def validate_portfolio_against_benchmark(
     end_date: str | None = None,
     backtest_results: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
-    # 使用动态默认日期（最近4年）
-    if end_date is None:
-        end_date = datetime.date.today().isoformat()
-    if start_date is None:
-        start_date = (datetime.date.today() - datetime.timedelta(days=365 * 4)).isoformat()
     """校验整个组合是否跑赢买入持有基准.
 
     Args:
@@ -440,38 +440,20 @@ def validate_portfolio_against_benchmark(
     Returns:
         完整校验报告
     """
+    # 使用动态默认日期（最近4年）
+    if end_date is None:
+        end_date = datetime.date.today().isoformat()
+    if start_date is None:
+        start_date = (datetime.date.today() - datetime.timedelta(days=365 * 4)).isoformat()
+
     # 1. 计算组合基准
     benchmark = calculate_composite_benchmark(saa_weights, start_date, end_date)
     benchmark_return = benchmark["composite_return"]
 
     # 2. 计算组合策略收益（加权平均）
-    total_weight = 0.0
-    weighted_strategy_return = 0.0
-    strategy_drawdown = 0.0
-
-    for b in portfolio_bindings:
-        weight = b.get("weight", 0.0)
-        symbol = b.get("symbol", "")
-
-        # 从回测结果获取策略收益
-        if backtest_results and symbol in backtest_results:
-            bt = backtest_results[symbol]
-            s_ret = bt.get("total_return", 0.0)
-            s_dd = bt.get("max_drawdown", 0.0)
-        else:
-            # 简化: 用买入持有收益作为策略收益（保守估计）
-            s_ret = 0.0
-            s_dd = 0.0
-
-        weighted_strategy_return += s_ret * weight
-        total_weight += weight
-        strategy_drawdown = max(strategy_drawdown, s_dd)
-
-    # 归一化
-    if total_weight > 0:
-        strategy_return = weighted_strategy_return / total_weight
-    else:
-        strategy_return = 0.0
+    strategy_return, strategy_drawdown = calculate_portfolio_strategy_return(
+        portfolio_bindings, backtest_results
+    )
 
     # 3. 基准回撤（加权平均）
     benchmark_drawdown = 0.0
@@ -497,7 +479,321 @@ def validate_portfolio_against_benchmark(
 
 
 # ═══════════════════════════════════════════════════════════════
-# 5. 便捷函数
+# 5. 多基准对比与置信度评分
+# ═══════════════════════════════════════════════════════════════
+
+def _is_backtest_in_percentage(bt: dict) -> bool:
+    """判断回测结果是否使用百分比格式.
+
+    hybrid_portfolio_designer_v2 中收益率/回撤等字段会 *100 以百分比数值存储，
+    而本模块的买入持有基准使用小数格式（如 0.24 表示 24%）。
+    这里通过 volatility 字段作为哨兵判断：年化波动率通常大于 1 时为百分比格式。
+    """
+    volatility = bt.get("volatility")
+    if volatility is not None and volatility > 1:
+        return True
+    # 备用判断：return 与 max_drawdown 同时明显大于 1
+    ret = bt.get("return", 0)
+    dd = bt.get("max_drawdown", 0)
+    return abs(ret) > 1 and abs(dd) > 1
+
+
+def _pct_to_decimal(value: float | None) -> float:
+    """将百分比数值转换为小数."""
+    if value is None:
+        return 0.0
+    return value / 100.0
+
+
+def calculate_portfolio_strategy_return(
+    portfolio_bindings: list[dict],
+    backtest_results: dict[str, dict] | None = None,
+) -> tuple[float, float]:
+    """计算组合策略收益与回撤（加权平均）.
+
+    与 composite_benchmark 保持一致：收益和回撤均采用按权重加权平均，
+    而非取单个标的最大值，避免分散化组合被个别高回撤标的过度惩罚。
+    自动兼容 hybrid_portfolio_designer_v2 的百分比格式回测结果。
+
+    Returns:
+        (strategy_return, strategy_drawdown)
+    """
+    total_weight = 0.0
+    weighted_strategy_return = 0.0
+    weighted_strategy_drawdown = 0.0
+
+    for b in portfolio_bindings:
+        weight = b.get("weight", 0.0)
+        symbol = b.get("symbol", "")
+
+        if backtest_results and symbol in backtest_results:
+            bt = backtest_results[symbol]
+            s_ret = bt.get("return", bt.get("total_return", 0.0))
+            s_dd = bt.get("max_drawdown", 0.0)
+            # 统一单位：如果回测结果是百分比格式，转为小数
+            if _is_backtest_in_percentage(bt):
+                s_ret = _pct_to_decimal(s_ret)
+                s_dd = _pct_to_decimal(s_dd)
+        else:
+            # 无回测数据时保守估计为 0
+            s_ret = 0.0
+            s_dd = 0.0
+
+        weighted_strategy_return += s_ret * weight
+        weighted_strategy_drawdown += s_dd * weight
+        total_weight += weight
+
+    if total_weight > 0:
+        strategy_return = weighted_strategy_return / total_weight
+        strategy_drawdown = weighted_strategy_drawdown / total_weight
+    else:
+        strategy_return = 0.0
+        strategy_drawdown = 0.0
+
+    return strategy_return, strategy_drawdown
+
+
+def _calculate_benchmark_score(
+    strategy_return: float,
+    benchmark_return: float,
+    strategy_drawdown: float,
+    benchmark_drawdown: float,
+) -> dict[str, Any]:
+    """计算单一基准对比的得分与指标.
+
+    评分维度：
+    - 总收益跑赢：40%
+    - 回撤控制（策略回撤 ≤ 基准回撤 × 1.2）：25%
+    - 风险调整后收益（策略收益/策略回撤 vs 基准收益/基准回撤）：25%
+    - 不亏损（策略收益 ≥ 0 或 亏损小于基准）：10%
+    """
+    excess_return = strategy_return - benchmark_return
+
+    # 1. 收益跑赢
+    return_score = 0.0
+    if strategy_return >= benchmark_return:
+        return_score = 1.0
+    elif strategy_return >= benchmark_return * 0.8:
+        return_score = 0.5
+    elif strategy_return >= benchmark_return * 0.5:
+        return_score = 0.2
+
+    # 2. 回撤控制
+    dd_score = 0.0
+    if benchmark_drawdown > 0:
+        if strategy_drawdown <= benchmark_drawdown:
+            dd_score = 1.0
+        elif strategy_drawdown <= benchmark_drawdown * 1.2:
+            dd_score = 0.6
+        elif strategy_drawdown <= benchmark_drawdown * 1.5:
+            dd_score = 0.3
+    else:
+        dd_score = 1.0 if strategy_drawdown <= 0.2 else 0.5
+
+    # 3. 风险调整后收益（卡玛比率近似）
+    calmar_score = 0.0
+    s_calmar = strategy_return / max(strategy_drawdown, 0.01)
+    b_calmar = benchmark_return / max(benchmark_drawdown, 0.01)
+    if b_calmar > 0:
+        if s_calmar >= b_calmar:
+            calmar_score = 1.0
+        elif s_calmar >= b_calmar * 0.8:
+            calmar_score = 0.6
+        elif s_calmar >= b_calmar * 0.5:
+            calmar_score = 0.3
+    else:
+        calmar_score = 1.0 if s_calmar >= 0 else 0.0
+
+    # 4. 不大幅亏损
+    loss_score = 0.0
+    if strategy_return >= 0:
+        loss_score = 1.0
+    elif strategy_return >= benchmark_return:
+        loss_score = 0.8
+    elif strategy_return >= -0.1:
+        loss_score = 0.4
+
+    score = return_score * 0.40 + dd_score * 0.25 + calmar_score * 0.25 + loss_score * 0.10
+    score = round(max(0.0, min(1.0, score)), 4)
+
+    return {
+        "benchmark_return": round(benchmark_return, 4),
+        "strategy_return": round(strategy_return, 4),
+        "excess_return": round(excess_return, 4),
+        "benchmark_drawdown": round(benchmark_drawdown, 4),
+        "strategy_drawdown": round(strategy_drawdown, 4),
+        "passed": _bool(strategy_return >= benchmark_return),
+        "score": score,
+        "return_score": round(return_score, 4),
+        "drawdown_score": round(dd_score, 4),
+        "calmar_score": round(calmar_score, 4),
+        "loss_score": round(loss_score, 4),
+    }
+
+
+def calculate_broad_index_benchmark(
+    start_date: str,
+    end_date: str,
+    symbol: str = "510300",
+) -> dict[str, Any]:
+    """计算宽基指数买入持有收益（默认沪深300）."""
+    result = calculate_buy_hold_return(symbol, start_date, end_date)
+    return {
+        "symbol": symbol,
+        "name": "沪深300ETF",
+        "total_return": result["total_return"],
+        "annualized_return": result["annualized_return"],
+        "max_drawdown": result["max_drawdown"],
+        "volatility": result["volatility"],
+    }
+
+
+def calculate_equal_weight_benchmark(
+    portfolio_bindings: list[dict],
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    """计算等权买入持有 benchmark：等权持有所有 binding 标的."""
+    if not portfolio_bindings:
+        return {"total_return": 0.0, "max_drawdown": 0.0}
+
+    returns = []
+    drawdowns = []
+    for b in portfolio_bindings:
+        symbol = b.get("symbol", "")
+        if not symbol:
+            continue
+        result = calculate_buy_hold_return(symbol, start_date, end_date)
+        if result.get("data_source") != "failed":
+            returns.append(result["total_return"])
+            drawdowns.append(result["max_drawdown"])
+
+    if not returns:
+        return {"total_return": 0.0, "max_drawdown": 0.0}
+
+    return {
+        "total_return": round(sum(returns) / len(returns), 4),
+        "max_drawdown": round(sum(drawdowns) / len(drawdowns), 4),
+    }
+
+
+def calculate_sixty_forty_benchmark(
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    """计算 60/40 股债组合 benchmark：60% 沪深300 + 40% 国债ETF."""
+    stock_result = calculate_buy_hold_return("510300", start_date, end_date)
+    bond_result = calculate_buy_hold_return("511010", start_date, end_date)
+
+    total_return = 0.6 * stock_result["total_return"] + 0.4 * bond_result["total_return"]
+    max_drawdown = 0.6 * stock_result["max_drawdown"] + 0.4 * bond_result["max_drawdown"]
+
+    return {
+        "total_return": round(total_return, 4),
+        "max_drawdown": round(max_drawdown, 4),
+        "stock": stock_result,
+        "bond": bond_result,
+    }
+
+
+def compare_portfolio_to_benchmarks(
+    portfolio_bindings: list[dict],
+    saa_weights: dict[str, float],
+    backtest_results: dict[str, dict] | None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
+    """对比组合策略与多个基准.
+
+    Returns:
+        {
+            "custom_benchmark": {...},
+            "csi300": {...},
+            "equal_weight": {...},
+            "sixty_forty": {...},
+            "overall_score": float,
+            "strategy_return": float,
+            "strategy_drawdown": float,
+        }
+    """
+    if end_date is None:
+        end_date = datetime.date.today().isoformat()
+    if start_date is None:
+        start_date = (datetime.date.today() - datetime.timedelta(days=365 * 4)).isoformat()
+
+    strategy_return, strategy_drawdown = calculate_portfolio_strategy_return(
+        portfolio_bindings, backtest_results
+    )
+
+    # 1. 自定义大类资产基准
+    custom = calculate_composite_benchmark(saa_weights, start_date, end_date)
+    custom_metric = _calculate_benchmark_score(
+        strategy_return=strategy_return,
+        benchmark_return=custom["composite_return"],
+        strategy_drawdown=strategy_drawdown,
+        benchmark_drawdown=sum(
+            d.get("max_drawdown", 0) * d.get("weight", 0)
+            for d in custom.get("details", {}).values()
+        ),
+    )
+    custom_metric["name"] = "自定义大类资产基准"
+    custom_metric["description"] = "按SAA权重持有4类ETF"
+
+    # 2. 沪深300
+    csi300 = calculate_broad_index_benchmark(start_date, end_date, "510300")
+    csi300_metric = _calculate_benchmark_score(
+        strategy_return=strategy_return,
+        benchmark_return=csi300["total_return"],
+        strategy_drawdown=strategy_drawdown,
+        benchmark_drawdown=csi300["max_drawdown"],
+    )
+    csi300_metric["name"] = "沪深300"
+    csi300_metric["description"] = "A股核心宽基指数"
+
+    # 3. 等权持有
+    equal_weight = calculate_equal_weight_benchmark(portfolio_bindings, start_date, end_date)
+    equal_metric = _calculate_benchmark_score(
+        strategy_return=strategy_return,
+        benchmark_return=equal_weight["total_return"],
+        strategy_drawdown=strategy_drawdown,
+        benchmark_drawdown=equal_weight["max_drawdown"],
+    )
+    equal_metric["name"] = "等权买入持有"
+    equal_metric["description"] = "等权持有组合中所有标的"
+
+    # 4. 60/40 股债
+    sixty_forty = calculate_sixty_forty_benchmark(start_date, end_date)
+    sf_metric = _calculate_benchmark_score(
+        strategy_return=strategy_return,
+        benchmark_return=sixty_forty["total_return"],
+        strategy_drawdown=strategy_drawdown,
+        benchmark_drawdown=sixty_forty["max_drawdown"],
+    )
+    sf_metric["name"] = "60/40 股债组合"
+    sf_metric["description"] = "60%沪深300 + 40%国债"
+
+    # 综合得分：自定义基准权重最高，宽基指数次之
+    overall_score = (
+        custom_metric["score"] * 0.35
+        + csi300_metric["score"] * 0.25
+        + equal_metric["score"] * 0.20
+        + sf_metric["score"] * 0.20
+    )
+    overall_score = round(max(0.0, min(1.0, overall_score)), 4)
+
+    return {
+        "custom_benchmark": custom_metric,
+        "csi300": csi300_metric,
+        "equal_weight": equal_metric,
+        "sixty_forty": sf_metric,
+        "overall_score": overall_score,
+        "strategy_return": round(strategy_return, 4),
+        "strategy_drawdown": round(strategy_drawdown, 4),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# 6. 便捷函数
 # ═══════════════════════════════════════════════════════════════
 
 def get_benchmark_summary(

@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { marketSignalApi, type MarketSignalLatest } from '@/api/marketSignal'
+import LegalNotice from '@/components/LegalNotice.vue'
 
 const router = useRouter()
 
@@ -20,7 +21,7 @@ function toggleCycleExpand() {
 }
 
 function goToPortfolio() {
-  router.push('/portfolio')
+  router.push('/portfolio/guide')
 }
 
 function goToProfile() {
@@ -284,6 +285,15 @@ const layerOrder = ['macro', 'geo', 'industry', 'social', 'internal']
     </header>
 
     <div class="signal-content">
+      <LegalNotice
+        title="市场信号声明"
+        :show-data-source="true"
+        :show-investment-disclaimer="true"
+        :show-privacy="true"
+        :show-license="true"
+        :show-crawler="true"
+      />
+
       <div v-if="loading" class="loading-state">加载市场信号...</div>
       <div v-else-if="error" class="error-state">{{ error }}</div>
 

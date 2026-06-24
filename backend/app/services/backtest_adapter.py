@@ -16,6 +16,7 @@ from app.services.backtest_service import (
     _df_to_candles,
     _write_strategy_to_temp_file,
     _run_benchmark,
+    _extract_strategy_class_name,
     AkshareProxyError,
     AkshareDataError,
 )
@@ -40,24 +41,24 @@ ASSET_TYPES = {
 # ═══════════════════════════════════════════════════════════════
 
 def fetch_etf_data(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """获取ETF历史数据（优先读缓存，当前akshare无可用免费ETF历史接口）."""
-    try:
-        # 优先尝试本地缓存
-        start_fmt = start_date.replace("-", "")
-        end_fmt = end_date.replace("-", "")
-        df = cache_get_ohlcv(symbol, start_fmt, end_fmt)
-        if df is not None and not df.empty:
-            return _normalize_akquant_df(df, symbol)
+    """获取ETF历史数据（优先读缓存，缓存未命中则通过akshare获取）."""
+    start_fmt = start_date.replace("-", "")
+    end_fmt = end_date.replace("-", "")
 
-        # 当前akshare ETF历史接口 fund_etf_hist_em 已被封
-        raise AkshareDataError(
-            f"ETF {symbol} 历史数据当前无法通过akshare获取，"
-            f"请先通过其他方式将数据写入data_cache缓存"
-        )
-    except AkshareDataError:
-        raise
-    except Exception as e:
-        raise AkshareDataError(f"获取ETF数据失败: {e}")
+    # 优先尝试本地缓存
+    df = cache_get_ohlcv(symbol, start_fmt, end_fmt)
+    if df is not None and not df.empty:
+        return _normalize_akquant_df(df, symbol)
+
+    # 缓存未命中，通过 data_cache 的 fallback 获取（支持 fund_etf_hist_em / fund_etf_hist_sina）
+    df = cache_get_ohlcv(symbol, start_fmt, end_fmt, force_refresh=True)
+    if df is not None and not df.empty:
+        return _normalize_akquant_df(df, symbol)
+
+    raise AkshareDataError(
+        f"ETF {symbol} 历史数据无法通过akshare获取，"
+        f"请检查网络连接或手动将数据写入data_cache缓存"
+    )
 
 
 def fetch_fund_data(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
@@ -206,6 +207,7 @@ def run_backtest_multi_asset(
         result = akquant.run_backtest(
             data=data_input,
             strategy_source=tmp_path,
+            strategy_attr=_extract_strategy_class_name(strategy_code),
             symbols=symbols,
             initial_cash=initial_cash,
             start_time=start_date,

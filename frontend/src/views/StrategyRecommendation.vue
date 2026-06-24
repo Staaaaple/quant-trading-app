@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import LegalNotice from '@/components/LegalNotice.vue'
 
 const router = useRouter()
 
@@ -84,6 +85,15 @@ onMounted(() => {
 
     <!-- Content -->
     <div class="recommendation-content">
+      <LegalNotice
+        title="策略推荐声明"
+        :show-data-source="true"
+        :show-investment-disclaimer="true"
+        :show-privacy="true"
+        :show-license="true"
+        :show-crawler="false"
+      />
+
       <!-- Loading -->
       <div v-if="loading" class="loading-state">加载中...</div>
 

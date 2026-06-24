@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     account_settings, stock_picker, risk_strategies,
     strategy_flows, dna, users, profiles, market_signals, templates,
     discovery, portfolios, backtest_adapter, fullchain, rag,
+    tutorials, feedbacks, ab_tests,
 )
 
 api_router = APIRouter()
@@ -26,3 +27,6 @@ api_router.include_router(portfolios.router, prefix="/portfolios", tags=["portfo
 api_router.include_router(backtest_adapter.router, prefix="/backtest-adapter", tags=["backtest-adapter"])
 api_router.include_router(fullchain.router, prefix="/fullchain", tags=["fullchain"])
 api_router.include_router(rag.router, prefix="/rag", tags=["rag"])
+api_router.include_router(tutorials.router, prefix="/tutorials", tags=["tutorials"])
+api_router.include_router(feedbacks.router, prefix="/feedbacks", tags=["feedbacks"])
+api_router.include_router(ab_tests.router, prefix="/ab-tests", tags=["ab-tests"])

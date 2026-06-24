@@ -1,0 +1,1 @@
+import{n as e}from"./client-BX3_RpM7.js";var t={getLatest:()=>e.get(`/market-signals/latest`).then(e=>e.data),collect:()=>e.post(`/market-signals/collect`).then(e=>e.data)};export{t};

@@ -68,20 +68,16 @@ const marketMood = '中性偏乐观'
                 <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
               </filter>
             </defs>
-            <!-- Perspective base -->
             <ellipse cx="200" cy="210" rx="130" ry="28" fill="none" stroke="#262626" stroke-width="1"/>
             <ellipse cx="200" cy="200" rx="110" ry="23" fill="none" stroke="#333" stroke-width="1"/>
             <ellipse cx="200" cy="190" rx="90" ry="18" fill="url(#coneGrad)" stroke="#404040" stroke-width="1"/>
-            <!-- Pyramid core -->
             <path d="M155 190 L200 85 L245 190 Z" fill="#141414" stroke="#525252" stroke-width="1.5" stroke-linejoin="round"/>
             <path d="M177 190 L200 125 L223 190 Z" fill="#1f1f1f" opacity="0.5"/>
-            <!-- Accent apex -->
             <line x1="200" y1="85" x2="200" y2="55" stroke="#737373" stroke-width="1.5" stroke-linecap="round"/>
             <circle cx="200" cy="52" r="3" fill="#a3a3a3" filter="url(#glow)">
               <animate attributeName="cy" values="52;48;52" dur="2.5s" repeatCount="indefinite"/>
               <animate attributeName="opacity" values="1;0.5;1" dur="2.5s" repeatCount="indefinite"/>
             </circle>
-            <!-- Floating data bars -->
             <rect x="65" y="130" width="10" height="55" rx="5" fill="url(#barGrad)" opacity="0.7">
               <animate attributeName="height" values="55;75;55" dur="3.2s" repeatCount="indefinite"/>
               <animate attributeName="y" values="130;110;130" dur="3.2s" repeatCount="indefinite"/>
@@ -98,15 +94,13 @@ const marketMood = '中性偏乐观'
               <animate attributeName="height" values="45;65;45" dur="2.5s" repeatCount="indefinite"/>
               <animate attributeName="y" values="140;120;140" dur="2.5s" repeatCount="indefinite"/>
             </rect>
-            <!-- Side accents -->
             <line x1="95" y1="165" x2="140" y2="180" stroke="#333" stroke-width="0.8" stroke-dasharray="3 3"/>
             <line x1="260" y1="180" x2="305" y2="165" stroke="#333" stroke-width="0.8" stroke-dasharray="3 3"/>
           </svg>
         </div>
 
         <h1 class="hero-title">
-          构建你的<br/>
-          <span class="gradient-text">量化投资组合</span>
+          <span class="gradient-text">构建你的投资组合</span>
         </h1>
         <p class="hero-desc">基于市场五层信号模型，AI 为你定制策略配置</p>
       </div>

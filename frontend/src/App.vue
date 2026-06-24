@@ -1,14 +1,83 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { supportedLocales, type SupportedLocale } from './i18n'
 import { syncApi } from './api/sync'
 import { dnaApi } from './api/dna'
 import UserSwitcher from './components/UserSwitcher.vue'
 
+import { useUserStore } from './stores/user'
+
 const route = useRoute()
+const router = useRouter()
 const { locale, t } = useI18n()
+const userStore = useUserStore()
+
+const menuOpen = ref(false)
+
+const menuGroups = [
+  {
+    title: '首页与引导',
+    items: [
+      { label: '首页', path: '/' },
+    ],
+  },
+  {
+    title: '投资者画像',
+    items: [
+      { label: '画像问卷', path: '/profile' },
+      { label: '画像摘要', path: '/profile/summary' },
+    ],
+  },
+  {
+    title: '市场信号',
+    items: [
+      { label: '市场仪表盘', path: '/market' },
+      { label: '市场引导', path: '/market/guide' },
+    ],
+  },
+  {
+    title: '资产组合',
+    items: [
+      { label: '组合构建', path: '/portfolio' },
+      { label: '组合引导', path: '/portfolio/guide' },
+      { label: '策略匹配', path: '/portfolio/strategies' },
+      { label: '策略引导', path: '/portfolio/strategies/guide' },
+    ],
+  },
+  {
+    title: '策略生态',
+    items: [
+      { label: '生态系统', path: '/ecosystem' },
+      { label: '策略地图', path: '/strategy-map' },
+      { label: '建仓引导', path: '/building-guide' },
+    ],
+  },
+  {
+    title: '工具与监控',
+    items: [
+      { label: '回测中心', path: '/backtests' },
+      { label: '策略对比', path: '/ab-tests' },
+      { label: '模拟交易', path: '/paper-trading' },
+      { label: '市场报告', path: '/market-report' },
+      { label: '今日操作', path: '/today-operation' },
+    ],
+  },
+]
+
+function toggleMenu() {
+  menuOpen.value = !menuOpen.value
+}
+
+function closeMenu() {
+  menuOpen.value = false
+}
+
+function navigateTo(path: string) {
+  menuOpen.value = false
+  router.push(path)
+}
 
 const pageTitle = computed(() => {
   const key = route.meta.titleKey as string
@@ -40,7 +109,14 @@ async function loadEcoAlert() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await userStore.loadUsers()
+
+  // 切离演示用户后，清除组合动画已播放标记，确保下次切回演示用户仍会播放
+  if (!userStore.isDemo) {
+    sessionStorage.removeItem('demo_portfolio_animation_shown')
+  }
+
   loadPendingSummary()
   setInterval(loadPendingSummary, 60000)
   loadEcoAlert()
@@ -49,67 +125,67 @@ onMounted(() => {
 </script>
 
 <template>
+  <!-- Global Menu Button -->
+  <button class="menu-toggle" @click="toggleMenu" aria-label="打开菜单">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 5h16"/>
+      <path d="M4 12h16"/>
+      <path d="M4 19h16"/>
+    </svg>
+  </button>
+
+  <!-- Menu Drawer -->
+  <Teleport to="body">
+    <Transition name="drawer-fade">
+      <div v-if="menuOpen" class="menu-overlay" @click.self="closeMenu">
+        <Transition name="drawer-slide">
+          <div v-if="menuOpen" class="menu-drawer">
+            <div class="menu-header">
+              <div class="menu-brand">
+                <div class="menu-brand-icon">Q</div>
+                <span class="menu-brand-name">QUANTEVO</span>
+              </div>
+              <button class="menu-close" @click="closeMenu" aria-label="关闭菜单">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6 6 18"/>
+                  <path d="m6 6 12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="menu-body">
+              <div v-for="group in menuGroups" :key="group.title" class="menu-group">
+                <div class="menu-group-title">{{ group.title }}</div>
+                <nav class="menu-group-items">
+                  <button
+                    v-for="item in group.items"
+                    :key="item.path"
+                    class="menu-item"
+                    :class="{ active: route.path === item.path }"
+                    @click="navigateTo(item.path)"
+                  >
+                    <span class="menu-dot"></span>
+                    <span>{{ item.label }}</span>
+                  </button>
+                </nav>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </div>
+    </Transition>
+  </Teleport>
+
   <div v-if="route.meta.layout === 'demo'" class="demo-layout">
     <RouterView />
-    <div class="disclaimer">本应用仅供学习交流，不构成任何投资建议。市场有风险，投资需谨慎。</div>
+    <div class="disclaimer">
+      <strong>本应用仅供学习交流，不构成任何投资建议。</strong>
+      市场有风险，投资需谨慎。本平台非持牌证券投资顾问，所有组合、策略、标的代码及买卖信号均为算法示例。
+      数据来源于 akshare 等公开数据源，版权归原数据提供方所有。
+      使用本应用即表示您同意我们的《隐私政策》与《用户协议》。
+    </div>
   </div>
   <div v-else class="layout">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-icon">Q</div>
-        <div class="brand-name">{{ t('app.name') }}</div>
-      </div>
-
-      <nav class="nav">
-        <RouterLink to="/" class="nav-item" exact-active-class="active">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          </span>
-          <span>{{ t('nav.home') }}</span>
-          <span v-if="ecoAlertCount > 0" class="nav-badge nav-badge--eco" :title="`${ecoAlertCount} 个策略需要关注`">{{ ecoAlertCount }}</span>
-        </RouterLink>
-        <RouterLink to="/strategies" class="nav-item" exact-active-class="active">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
-          </span>
-          <span>{{ t('nav.strategies') }}</span>
-        </RouterLink>
-        <RouterLink to="/backtests" class="nav-item" exact-active-class="active">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-          </span>
-          <span>{{ t('nav.backtests') }}</span>
-        </RouterLink>
-        <RouterLink to="/paper-trading" class="nav-item" exact-active-class="active">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg>
-          </span>
-          <span>{{ t('nav.paperTrading') }}</span>
-          <span v-if="pendingSummary.overdue_count > 0" class="nav-badge">{{ pendingSummary.overdue_count }}</span>
-        </RouterLink>
-        <RouterLink to="/manual" class="nav-item" exact-active-class="active">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>
-          </span>
-          <span>{{ t('nav.manual') }}</span>
-        </RouterLink>
-      </nav>
-
-      <div class="lang-switcher">
-        <label>{{ t('app.language') }}</label>
-        <div class="lang-options">
-          <button
-            v-for="loc in supportedLocales"
-            :key="loc.code"
-            :class="['lang-btn', { active: locale === loc.code }]"
-            @click="changeLanguage(loc.code)"
-          >
-            {{ loc.name }}
-          </button>
-        </div>
-      </div>
-    </aside>
-
     <main class="main">
       <header class="page-header-bar">
         <h1 class="page-header-title">{{ pageTitle }}</h1>
@@ -118,12 +194,15 @@ onMounted(() => {
       <div class="main-content">
         <RouterView />
       </div>
-      <div class="disclaimer">本应用仅供学习交流，不构成任何投资建议。市场有风险，投资需谨慎。</div>
+      <div class="disclaimer">
+        <strong>本应用仅供学习交流，不构成任何投资建议。</strong>
+        市场有风险，投资需谨慎。本平台非持牌证券投资顾问。数据来源于公开数据源，版权归原数据提供方所有。
+      </div>
     </main>
   </div>
 </template>
 
-<style scoped>
+<style>
 .demo-layout {
   min-height: 100vh;
 }
@@ -133,158 +212,10 @@ onMounted(() => {
   min-height: 100vh;
 }
 
-.sidebar {
-  width: var(--sidebar-width);
-  background: var(--bg-surface);
-  border-right: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-2xl) var(--space-xl);
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  z-index: 50;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  margin-bottom: var(--space-3xl);
-}
-
-.brand-icon {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
-  color: #fff;
-  font-weight: 700;
-  font-size: 1.1rem;
-  border-radius: var(--radius-md);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
-}
-
-.brand-name {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-}
-
-.nav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  flex: 1;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-md) var(--space-lg);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.nav-item:hover {
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-}
-
-.nav-item.active {
-  background: var(--accent-subtle);
-  color: var(--accent);
-}
-
-.nav-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.8;
-}
-
-.nav-badge {
-  margin-left: auto;
-  min-width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--error);
-  color: #fff;
-  font-size: 0.7rem;
-  font-weight: 600;
-  border-radius: 9999px;
-  padding: 0 6px;
-}
-
-.nav-badge--eco {
-  background: #b91c1c;
-  animation: eco-pulse 2s ease-in-out infinite;
-}
-
-@keyframes eco-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-.lang-switcher {
-  margin-top: auto;
-  padding-top: var(--space-xl);
-  border-top: 1px solid var(--border-subtle);
-}
-
-.lang-switcher label {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: var(--space-sm);
-}
-
-.lang-options {
-  display: flex;
-  gap: var(--space-xs);
-  flex-wrap: wrap;
-}
-
-.lang-btn {
-  padding: var(--space-xs) var(--space-sm);
-  background: transparent;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.lang-btn:hover {
-  border-color: var(--border-focus);
-  color: var(--text-primary);
-}
-
-.lang-btn.active {
-  background: var(--accent-subtle);
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: 500;
-}
-
 .main {
   flex: 1;
   min-width: 0;
   background: var(--bg-base);
-  margin-left: var(--sidebar-width);
   display: flex;
   flex-direction: column;
 }
@@ -321,18 +252,199 @@ onMounted(() => {
   position: fixed;
   bottom: 8px;
   right: 12px;
-  font-size: 0.65rem;
-  color: #a3a3a3;
-  opacity: 0.6;
+  font-size: 0.72rem;
+  color: #525252;
+  opacity: 0.85;
   z-index: 100;
   pointer-events: none;
   text-align: right;
-  line-height: 1.4;
-  max-width: 280px;
+  line-height: 1.5;
+  max-width: 360px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 }
 
 .demo-layout .disclaimer {
   bottom: 8px;
   right: 12px;
+}
+
+.disclaimer strong {
+  color: #171717;
+  font-weight: 600;
+}
+
+/* Global Menu */
+.menu-toggle {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 200;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  color: #171717;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  transition: all 0.2s ease;
+}
+.menu-toggle:hover {
+  background: #f5f5f5;
+  transform: scale(1.05);
+}
+
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  background: rgba(0,0,0,0.35);
+  backdrop-filter: blur(4px);
+}
+.menu-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  max-width: 85vw;
+  background: #fff;
+  z-index: 211;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 8px 0 32px rgba(0,0,0,0.12);
+}
+
+.menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+.menu-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.menu-brand-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+}
+.menu-brand-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #171717;
+  letter-spacing: -0.02em;
+}
+.menu-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: #fff;
+  color: #525252;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.menu-close:hover {
+  background: #f5f5f5;
+  color: #171717;
+  transform: rotate(90deg);
+}
+
+.menu-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px 24px;
+}
+.menu-group {
+  margin-bottom: 18px;
+}
+.menu-group-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #a3a3a3;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0 8px;
+  margin-bottom: 6px;
+}
+.menu-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: #525252;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+.menu-item:hover {
+  background: #f5f5f5;
+  color: #171717;
+}
+.menu-item.active {
+  background: #eef2ff;
+  color: #4f46e5;
+  font-weight: 600;
+}
+.menu-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+}
+.menu-item.active .menu-dot {
+  opacity: 1;
+}
+
+/* Drawer Transitions */
+.drawer-fade-enter-active,
+.drawer-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.drawer-fade-enter-from,
+.drawer-fade-leave-to {
+  opacity: 0;
+}
+
+.drawer-slide-enter-active,
+.drawer-slide-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.drawer-slide-enter-from,
+.drawer-slide-leave-to {
+  transform: translateX(-100%);
 }
 </style>

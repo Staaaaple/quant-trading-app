@@ -16,7 +16,7 @@ export default defineConfig({
     // 本地开发时代理 API 请求到后端
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:8001',
         changeOrigin: true,
       },
     },

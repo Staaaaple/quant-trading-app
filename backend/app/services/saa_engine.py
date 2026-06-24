@@ -135,6 +135,57 @@ def calculate_saa(
         "cash": round(adjusted_cash / total, 4),
     }
 
+    # ── 强制满足风险画像硬约束 ──
+    # 周期/宏观调整可能使股票超过上限或债券/现金低于下限，需二次修正
+    stock_max = profile.get("stock_max", 0.90)
+    bond_min = profile.get("bond_min", 0.05)
+    cash_min = profile.get("cash_min", 0.03)
+
+    # 股票上限截断
+    if weights["stock"] > stock_max:
+        excess = weights["stock"] - stock_max
+        weights["stock"] = stock_max
+        weights["bond"] += excess
+
+    # 债券下限提升
+    if weights["bond"] < bond_min:
+        deficit = bond_min - weights["bond"]
+        weights["bond"] = bond_min
+        if weights["stock"] >= deficit:
+            weights["stock"] -= deficit
+        elif weights["commodity"] >= deficit:
+            weights["commodity"] -= deficit
+        else:
+            weights["stock"] = 0
+            weights["commodity"] = max(0, weights["commodity"] - (deficit - weights["stock"]))
+
+    # 现金下限提升
+    if weights["cash"] < cash_min:
+        deficit = cash_min - weights["cash"]
+        weights["cash"] = cash_min
+        if weights["stock"] >= deficit:
+            weights["stock"] -= deficit
+        elif weights["commodity"] >= deficit:
+            weights["commodity"] -= deficit
+        else:
+            weights["stock"] = 0
+            weights["commodity"] = max(0, weights["commodity"] - (deficit - weights["stock"]))
+
+    # 最终归一化（修正浮点误差）
+    final_total = sum(weights.values())
+    if final_total > 0 and abs(final_total - 1.0) > 0.001:
+        for k in weights:
+            weights[k] = round(weights[k] / final_total, 4)
+
+    # 避免 cash 因浮点截断低于下限
+    if weights["cash"] < cash_min:
+        deficit = cash_min - weights["cash"]
+        weights["cash"] = cash_min
+        if weights["stock"] >= deficit:
+            weights["stock"] -= deficit
+        elif weights["commodity"] >= deficit:
+            weights["commodity"] -= deficit
+
     # 生成理由
     rationale = _generate_rationale(
         risk_tolerance, market_cycle, weights, macro_score, geo_risk

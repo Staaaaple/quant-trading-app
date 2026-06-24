@@ -6,6 +6,7 @@ import { profileApi, type InvestorProfile } from '@/api/profile'
 import { marketSignalApi, type MarketSignalLatest } from '@/api/marketSignal'
 import { portfolioApi, type PortfolioDesignResult } from '@/api/portfolio'
 import UserSwitcher from '@/components/UserSwitcher.vue'
+import LegalNotice from '@/components/LegalNotice.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -15,7 +16,6 @@ const profile = ref<InvestorProfile | null>(null)
 const signal = ref<MarketSignalLatest | null>(null)
 const portfolio = ref<PortfolioDesignResult | null>(null)
 const loading = ref(true)
-const designing = ref(false)
 
 async function checkProfile() {
   loading.value = true
@@ -59,15 +59,35 @@ function handleUserSwitched() {
 
 async function loadDashboardData(p: InvestorProfile) {
   try {
-    // Load market signal
+    // 1. 先加载市场信号（立即展示仪表盘）
     signal.value = await marketSignalApi.getLatest()
+    if (signal.value) {
+      sessionStorage.setItem('latest_market_signal', JSON.stringify(signal.value))
+    }
   } catch (e) {
     console.error('Failed to load market signal:', e)
   }
 
+  // 2. 后台生成组合（不阻塞仪表盘渲染）
+  // 用户在浏览画像和信号页面时，组合在后台生成
+  generatePortfolioInBackground(p)
+}
+
+/** 后台生成组合——不阻塞 UI，使用异步任务 */
+async function generatePortfolioInBackground(p: InvestorProfile) {
   try {
-    // Design portfolio
-    designing.value = true
+    // 1. 先检查是否已有任务（running / completed）
+    const latestTask = await portfolioApi.getMyLatestTask()
+    if (latestTask?.task_id && (latestTask.status === 'running' || latestTask.status === 'completed')) {
+      localStorage.setItem('portfolio_task_id', String(latestTask.task_id))
+      if (latestTask.status === 'completed' && latestTask.result) {
+        portfolio.value = latestTask.result
+        sessionStorage.setItem('latest_portfolio', JSON.stringify(latestTask.result))
+      }
+      return
+    }
+
+    // 2. 构造请求参数
     const profileVector = {
       risk_tolerance: p.risk_tolerance,
       loss_aversion: p.loss_aversion,
@@ -90,29 +110,27 @@ async function loadDashboardData(p: InvestorProfile) {
     }
 
     const marketSignal = {
-      macro_score: signal.value?.macro.score ?? 0.5,
-      geo_risk: signal.value?.geo.overall_risk ?? 0.5,
-      industry_scores: signal.value?.industry.heatmap ?? {},
-      social_trends: signal.value?.social.major_themes ?? [],
+      macro_score: signal.value?.macro?.score ?? 0.5,
+      geo_risk: signal.value?.geo?.overall_risk ?? 0.5,
+      industry_scores: signal.value?.industry?.heatmap ?? {},
+      social_trends: signal.value?.social?.major_themes ?? [],
     }
 
-    portfolio.value = await portfolioApi.design({
+    // 3. 提交异步任务
+    const task = await portfolioApi.designAsync({
       profile_vector: profileVector,
       market_signal: marketSignal,
     })
 
-    // 存储到 sessionStorage，供 PortfolioBuilder 使用
-    if (portfolio.value) {
-      sessionStorage.setItem('latest_portfolio', JSON.stringify(portfolio.value))
-    }
-    // 同时存储市场信号
-    if (signal.value) {
-      sessionStorage.setItem('latest_market_signal', JSON.stringify(signal.value))
+    if (task?.task_id) {
+      localStorage.setItem('portfolio_task_id', String(task.task_id))
+      if (task.status === 'completed' && task.result) {
+        portfolio.value = task.result
+        sessionStorage.setItem('latest_portfolio', JSON.stringify(task.result))
+      }
     }
   } catch (e) {
-    console.error('Failed to design portfolio:', e)
-  } finally {
-    designing.value = false
+    console.error('Failed to design portfolio in background:', e)
   }
 }
 
@@ -133,7 +151,7 @@ function goRecommendation() {
 }
 
 function goLifespan() {
-  router.push('/lifespan')
+  router.push('/ecosystem')
 }
 
 function goBacktests() {
@@ -185,17 +203,19 @@ onUnmounted(() => {
 
     <!-- Content -->
     <div class="home-content">
+      <LegalNotice
+        title="使用声明"
+        :show-data-source="true"
+        :show-investment-disclaimer="true"
+        :show-privacy="true"
+        :show-license="true"
+        :show-crawler="true"
+      />
+
       <!-- Loading -->
       <div v-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
         <p>加载中...</p>
-      </div>
-
-      <!-- Designing Portfolio -->
-      <div v-else-if="designing" class="loading-state designing">
-        <div class="loading-spinner"></div>
-        <p>AI 正在生成组合配置...</p>
-        <p class="loading-sub">RAG 质检引擎运行中</p>
       </div>
 
       <!-- ========== EMPTY STATE ========== -->
@@ -250,8 +270,7 @@ onUnmounted(() => {
           </div>
 
           <h1 class="hero-title">
-            构建你的<br/>
-            <span class="gradient-text">量化投资组合</span>
+            <span class="gradient-text">构建你的投资组合</span>
           </h1>
           <p class="hero-desc">基于市场五层信号模型，AI 为你定制策略配置</p>
         </div>

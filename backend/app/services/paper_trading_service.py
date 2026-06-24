@@ -1,210 +1,315 @@
 import datetime
 import json
-import os
-import tempfile
-import traceback
-import uuid
-
-import akquant
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 
-from app.models.paper_trading import PaperSignal, PaperTradingSession
-from app.models.strategy import Strategy
-from app.schemas.paper_trading import PaperTradingSessionCreate, PaperTradingSessionUpdate
-from app.services.backtest_service import fetch_stock_data
-from app.services import strategy_flow_service, stock_picker_service, risk_strategy_service
+from app.models.paper_trading import PaperTradingDailyRecord, PaperTradingMonthlyStat
 
 
-def get_session(db: Session, session_id: str):
-    return db.query(PaperTradingSession).filter(PaperTradingSession.session_id == session_id).first()
+def _today_str() -> str:
+    return datetime.date.today().isoformat()
 
 
-def list_sessions(db: Session, skip: int = 0, limit: int = 100):
+def get_daily_record(db: Session, user_id: int, portfolio_id: int | None, record_date: str):
+    """获取指定日期的模拟盘记录."""
     return (
-        db.query(PaperTradingSession)
-        .order_by(PaperTradingSession.created_at.desc())
+        db.query(PaperTradingDailyRecord)
+        .filter(
+            PaperTradingDailyRecord.user_id == user_id,
+            PaperTradingDailyRecord.portfolio_id == portfolio_id,
+            PaperTradingDailyRecord.record_date == record_date,
+        )
+        .first()
+    )
+
+
+def get_previous_record(
+    db: Session,
+    user_id: int,
+    portfolio_id: int | None,
+    before_date: str,
+):
+    """获取指定日期之前的最近一条记录，用于计算净值."""
+    return (
+        db.query(PaperTradingDailyRecord)
+        .filter(
+            PaperTradingDailyRecord.user_id == user_id,
+            PaperTradingDailyRecord.portfolio_id == portfolio_id,
+            PaperTradingDailyRecord.record_date < before_date,
+        )
+        .order_by(PaperTradingDailyRecord.record_date.desc())
+        .first()
+    )
+
+
+def _extract_daily_return(page2: dict | None) -> float:
+    """从市场报告 page2 中提取组合日收益率."""
+    if not page2:
+        return 0.0
+    value = page2.get("portfolio_return")
+    try:
+        return float(value) if value is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def sync_daily_record_from_report(
+    db: Session,
+    *,
+    user_id: int,
+    portfolio_id: int | None,
+    report_id: int,
+    report_date: str,
+    page2: dict | None,
+):
+    """根据每日市场报告同步模拟盘日记录（幂等）."""
+    daily_return = _extract_daily_return(page2)
+
+    prev = get_previous_record(db, user_id, portfolio_id, report_date)
+    base_nav = prev.nav if prev else 1.0
+    nav = base_nav * (1 + daily_return)
+    cumulative_return = nav - 1.0
+
+    asset_snapshot = None
+    if page2 and page2.get("asset_performances"):
+        asset_snapshot = json.dumps(page2["asset_performances"], ensure_ascii=False)
+
+    record = get_daily_record(db, user_id, portfolio_id, report_date)
+    if record:
+        record.daily_return = daily_return
+        record.nav = nav
+        record.cumulative_return = cumulative_return
+        record.report_id = report_id
+        record.asset_snapshot = asset_snapshot
+    else:
+        record = PaperTradingDailyRecord(
+            user_id=user_id,
+            portfolio_id=portfolio_id,
+            record_date=report_date,
+            daily_return=daily_return,
+            nav=nav,
+            cumulative_return=cumulative_return,
+            report_id=report_id,
+            asset_snapshot=asset_snapshot,
+        )
+        db.add(record)
+
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def list_daily_records(
+    db: Session,
+    user_id: int,
+    portfolio_id: int | None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    skip: int = 0,
+    limit: int = 365,
+):
+    """查询每日累计收益记录."""
+    query = (
+        db.query(PaperTradingDailyRecord)
+        .filter(
+            PaperTradingDailyRecord.user_id == user_id,
+            PaperTradingDailyRecord.portfolio_id == portfolio_id,
+        )
+    )
+    if start_date:
+        query = query.filter(PaperTradingDailyRecord.record_date >= start_date)
+    if end_date:
+        query = query.filter(PaperTradingDailyRecord.record_date <= end_date)
+    return (
+        query.order_by(PaperTradingDailyRecord.record_date.asc())
         .offset(skip)
         .limit(limit)
         .all()
     )
 
 
-def create_session(db: Session, obj_in: PaperTradingSessionCreate):
-    db_obj = PaperTradingSession(
-        session_id=obj_in.session_id,
-        strategy_id=obj_in.strategy_id,
-        symbols=json.dumps(obj_in.symbols),
-        initial_cash=obj_in.initial_cash,
-        start_date=obj_in.start_date,
-        end_date=obj_in.end_date,
-        status="idle",
+def get_latest_daily_record(db: Session, user_id: int, portfolio_id: int | None):
+    """获取最新一日的模拟盘记录."""
+    return (
+        db.query(PaperTradingDailyRecord)
+        .filter(
+            PaperTradingDailyRecord.user_id == user_id,
+            PaperTradingDailyRecord.portfolio_id == portfolio_id,
+        )
+        .order_by(PaperTradingDailyRecord.record_date.desc())
+        .first()
     )
-    db.add(db_obj)
-    db.commit()
-    db.refresh(db_obj)
-    return db_obj
 
 
-def update_session(db: Session, db_obj: PaperTradingSession, obj_in: PaperTradingSessionUpdate):
-    update_data = obj_in.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(db_obj, field, value)
-    db.add(db_obj)
-    db.commit()
-    db.refresh(db_obj)
-    return db_obj
+def get_monthly_stat(db: Session, user_id: int, portfolio_id: int | None, year_month: str):
+    return (
+        db.query(PaperTradingMonthlyStat)
+        .filter(
+            PaperTradingMonthlyStat.user_id == user_id,
+            PaperTradingMonthlyStat.portfolio_id == portfolio_id,
+            PaperTradingMonthlyStat.year_month == year_month,
+        )
+        .first()
+    )
 
 
-def delete_session(db: Session, db_obj: PaperTradingSession):
-    db.delete(db_obj)
-    db.commit()
-
-
-def _write_strategy_to_temp_file(code: str) -> str:
-    """将策略源码写入临时文件并返回路径."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(code)
-        return f.name
-
-
-def _resolve_flow_for_paper(
+def generate_monthly_stat(
     db: Session,
-    strategy_id: str,
-    requested_symbols: list[str],
-) -> tuple[Strategy, list[str], dict]:
-    """解析策略流，返回实际交易策略、标的列表、风控配置."""
-    flow = strategy_flow_service.get_flow(db, strategy_id)
-    if not flow:
-        raise ValueError(f"Strategy flow {strategy_id} not found")
+    user_id: int,
+    portfolio_id: int | None,
+    year_month: str,
+):
+    """统计指定自然月的月度收益率."""
+    records = (
+        db.query(PaperTradingDailyRecord)
+        .filter(
+            PaperTradingDailyRecord.user_id == user_id,
+            PaperTradingDailyRecord.portfolio_id == portfolio_id,
+            PaperTradingDailyRecord.record_date.like(f"{year_month}%"),
+        )
+        .order_by(PaperTradingDailyRecord.record_date.asc())
+        .all()
+    )
 
-    if flow.picker_strategy_id:
-        picker = db.query(Strategy).filter(Strategy.strategy_id == flow.picker_strategy_id).first()
-        if not picker:
-            raise ValueError(f"Picker strategy {flow.picker_strategy_id} not found")
-    if flow.risk_strategy_id:
-        risk = db.query(Strategy).filter(Strategy.strategy_id == flow.risk_strategy_id).first()
-        if not risk:
-            raise ValueError(f"Risk strategy {flow.risk_strategy_id} not found")
-    trade = db.query(Strategy).filter(Strategy.strategy_id == flow.trade_strategy_id).first()
-    if not trade:
-        raise ValueError(f"Trade strategy {flow.trade_strategy_id} not found")
+    if not records:
+        return None
 
-    symbols = requested_symbols
-    if flow.picker_strategy_id:
-        pool = stock_picker_service.execute_picker(db, flow.picker_strategy_id)
-        symbols = [item.symbol for item in pool.items]
-        if not symbols:
-            raise ValueError("选股结果为空，策略流终止")
+    start_nav = records[0].nav
+    end_record = records[-1]
+    end_nav = end_record.nav
 
-    risk_config = {}
-    if flow.risk_strategy_id:
-        cfg = risk_strategy_service.get_config(db, flow.risk_strategy_id)
-        if cfg:
-            risk_config = {
-                "max_position_pct": cfg.max_position_pct,
-                "max_daily_drawdown": cfg.max_daily_drawdown,
-                "blacklist": cfg.blacklist,
-            }
+    monthly_return = (end_nav / start_nav) - 1.0 if start_nav else 0.0
 
-    return trade, symbols, risk_config
+    stat = get_monthly_stat(db, user_id, portfolio_id, year_month)
+    if stat:
+        stat.monthly_return = monthly_return
+        stat.cumulative_return_at_month_end = end_record.cumulative_return
+        stat.record_count = len(records)
+    else:
+        stat = PaperTradingMonthlyStat(
+            user_id=user_id,
+            portfolio_id=portfolio_id,
+            year_month=year_month,
+            monthly_return=monthly_return,
+            cumulative_return_at_month_end=end_record.cumulative_return,
+            record_count=len(records),
+        )
+        db.add(stat)
 
-
-def run_paper_trading_session(db: Session, session_id: str) -> PaperTradingSession:
-    """执行模拟盘回测并提取交易信号写入 PaperSignal."""
-    db_session = get_session(db, session_id)
-    if not db_session:
-        raise ValueError(f"Paper trading session {session_id} not found")
-
-    db_strategy = db.query(Strategy).filter(Strategy.strategy_id == db_session.strategy_id).first()
-    is_flow = False
-    if not db_strategy:
-        flow = strategy_flow_service.get_flow(db, db_session.strategy_id)
-        if not flow:
-            raise ValueError(f"Strategy {db_session.strategy_id} not found")
-        is_flow = True
-
-    symbols = json.loads(db_session.symbols)
-    start_date = db_session.start_date or (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
-    end_date = db_session.end_date or datetime.date.today().isoformat()
-
-    db_session.status = "running"
-    db_session.logs = ""
     db.commit()
+    db.refresh(stat)
+    return stat
 
-    tmp_path = ""
-    try:
-        risk_config = {}
-        if is_flow:
-            db_strategy, symbols, risk_config = _resolve_flow_for_paper(db, db_session.strategy_id, symbols)
 
-        # 拉取数据（复用 backtest_service 的 AKShare 适配器）
-        data_frames = {}
-        for sym in symbols:
-            df = fetch_stock_data(sym, start_date, end_date)
-            data_frames[sym] = df
-
-        if len(data_frames) == 1:
-            data_input = list(data_frames.values())[0]
-        else:
-            data_input = data_frames
-
-        # 写入策略临时文件
-        tmp_path = _write_strategy_to_temp_file(db_strategy.code)
-
-        # 运行回测引擎
-        result = akquant.run_backtest(
-            data=data_input,
-            strategy_source=tmp_path,
-            symbols=symbols,
-            initial_cash=db_session.initial_cash,
-            start_time=start_date,
-            end_time=end_date,
-            show_progress=False,
+def list_monthly_stats(
+    db: Session,
+    user_id: int,
+    portfolio_id: int | None,
+    skip: int = 0,
+    limit: int = 120,
+):
+    """查询月度统计."""
+    return (
+        db.query(PaperTradingMonthlyStat)
+        .filter(
+            PaperTradingMonthlyStat.user_id == user_id,
+            PaperTradingMonthlyStat.portfolio_id == portfolio_id,
         )
+        .order_by(PaperTradingMonthlyStat.year_month.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
-        # 清理该策略下的旧信号（同一 strategy_id 的模拟信号会被覆盖）
-        db.query(PaperSignal).filter(PaperSignal.strategy_id == db_session.strategy_id).delete()
-        db.commit()
 
-        # 提取订单为 PaperSignal
-        signals_created = 0
-        for order in result.orders:
-            if order.status in ("New", "Filled", "PartiallyFilled"):
-                side_str = order.side.value if hasattr(order.side, "value") else str(order.side)
-                signal = PaperSignal(
-                    signal_id=str(uuid.uuid4()),
-                    strategy_id=db_session.strategy_id,
-                    symbol=order.symbol,
-                    side=side_str,
-                    quantity=float(order.quantity) if order.quantity else 0.0,
-                    price=order.price,
-                    status="pending",
-                    signal_at=datetime.datetime.utcnow(),
+def sync_all_users_daily_records(db: Session, report_date: str | None = None):
+    """遍历所有活跃用户与其当前激活组合，从最新日报同步模拟盘记录."""
+    from app.models.user import User
+    from app.models.portfolio import Portfolio
+    from app.models.operation_log import MarketReport
+
+    if report_date is None:
+        report_date = _today_str()
+
+    users = db.query(User).filter(User.is_active == True).all()
+    results = {"created": 0, "errors": []}
+
+    for user in users:
+        try:
+            portfolio = (
+                db.query(Portfolio)
+                .filter(
+                    Portfolio.user_id == user.id,
+                    Portfolio.is_active == True,
                 )
-                db.add(signal)
-                signals_created += 1
+                .order_by(Portfolio.updated_at.desc())
+                .first()
+            )
+            portfolio_id = portfolio.id if portfolio else None
 
-        db_session.status = "success"
-        db_session.logs = json.dumps(
-            {
-                "signals_created": signals_created,
-                "total_trades": len(result.trades),
-                "total_orders": len(result.orders),
-                "engine_summary": str(result),
-                "risk_config": risk_config,
-            },
-            ensure_ascii=False,
-            default=str,
-        )
-        db.commit()
-    except Exception as e:
-        db_session.status = "error"
-        db_session.logs = f"Error: {e}\n{traceback.format_exc()}"
-        db.commit()
-        raise
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+            report = (
+                db.query(MarketReport)
+                .filter(
+                    MarketReport.user_id == user.id,
+                    MarketReport.portfolio_id == portfolio_id,
+                    MarketReport.report_type == "daily",
+                    MarketReport.report_date == report_date,
+                )
+                .order_by(MarketReport.created_at.desc())
+                .first()
+            )
 
-    db.refresh(db_session)
-    return db_session
+            if not report:
+                continue
+
+            sync_daily_record_from_report(
+                db,
+                user_id=user.id,
+                portfolio_id=portfolio_id,
+                report_id=report.id,
+                report_date=report_date,
+                page2=report.page2_portfolio_performance,
+            )
+            results["created"] += 1
+        except Exception as e:
+            results["errors"].append({"user_id": user.id, "error": str(e)})
+            db.rollback()
+
+    return results
+
+
+def generate_all_users_monthly_stats(db: Session, year_month: str | None = None):
+    """为所有活跃用户生成指定月份的月度统计；默认上一个月."""
+    from app.models.user import User
+    from app.models.portfolio import Portfolio
+
+    if year_month is None:
+        today = datetime.date.today()
+        first_day = today.replace(day=1)
+        prev_month = first_day - datetime.timedelta(days=1)
+        year_month = prev_month.strftime("%Y-%m")
+
+    users = db.query(User).filter(User.is_active == True).all()
+    results = {"created": 0, "errors": []}
+
+    for user in users:
+        try:
+            portfolio = (
+                db.query(Portfolio)
+                .filter(
+                    Portfolio.user_id == user.id,
+                    Portfolio.is_active == True,
+                )
+                .order_by(Portfolio.updated_at.desc())
+                .first()
+            )
+            portfolio_id = portfolio.id if portfolio else None
+
+            stat = generate_monthly_stat(db, user.id, portfolio_id, year_month)
+            if stat:
+                results["created"] += 1
+        except Exception as e:
+            results["errors"].append({"user_id": user.id, "error": str(e)})
+            db.rollback()
+
+    return results

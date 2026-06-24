@@ -8,8 +8,9 @@ import os
 import json
 import hashlib
 import time
+import random
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 import akshare as ak
@@ -43,84 +44,144 @@ class CachedData(CacheBase):
 CacheBase.metadata.create_all(bind=cache_engine)
 
 
+# ── 标的类型判断 ──
+
+def _is_etf(symbol: str) -> bool:
+    """判断是否为ETF代码（15/16/51/56/58/59开头）."""
+    return bool(symbol) and symbol[:2] in ("15", "16", "51", "56", "58", "59")
+
+
 # ── 备用数据源 ──
-
-def _fetch_from_eastmoney(symbol: str, start: str, end: str) -> pd.DataFrame | None:
-    """东方财富接口（主要）."""
-    try:
-        time.sleep(5)  # 5秒间隔，降低被封概率
-        df = ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start, end_date=end, adjust="qfq")
-        if df is not None and not df.empty:
-            return df
-    except Exception as e:
-        print(f"[DataCache] Eastmoney failed for {symbol}: {e}")
-    return None
-
 
 def _add_exchange_prefix(symbol: str) -> str:
     """为新浪财经/网易接口补充 sh/sz 前缀."""
     if symbol.startswith(("sh", "sz")):
         return symbol
+    # 简单判断：6 开头为沪市(sh)，其余为深市(sz)
     if symbol.startswith("6"):
         return f"sh{symbol}"
     return f"sz{symbol}"
 
 
-def _fetch_from_sina(symbol: str, start: str, end: str) -> pd.DataFrame | None:
-    """新浪接口（备用）."""
-    try:
-        # 新浪接口格式不同，需要转换
-        start_fmt = f"{start[:4]}-{start[4:6]}-{start[6:]}"
-        end_fmt = f"{end[:4]}-{end[4:6]}-{end[6:]}"
-        sina_symbol = _add_exchange_prefix(symbol)
-        df = ak.stock_zh_a_daily(symbol=sina_symbol, start_date=start_fmt, end_date=end_fmt)
-        if df is not None and not df.empty:
-            # 新浪返回英文列名，与 get_ohlcv 下游标准化保持一致
+def _retry_fetch(
+    fetch_func: Callable[..., pd.DataFrame | None],
+    symbol: str,
+    start: str,
+    end: str,
+    max_retries: int = 3,
+    base_delay: float = 2.0,
+) -> pd.DataFrame | None:
+    """带重试和指数退避的数据获取.
+
+    东方财富/新浪等免费接口对高频请求敏感，RemoteDisconnected 时重试。
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            # 请求前随机抖动，避免固定节奏触发限流
+            if attempt > 0:
+                delay = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1)
+                print(f"[DataCache] Retry {attempt}/{max_retries} for {symbol} after {delay:.1f}s")
+                time.sleep(delay)
+            else:
+                time.sleep(random.uniform(0.3, 0.8))
+
+            df = fetch_func(symbol, start, end)
+            if df is not None and not df.empty:
+                return df
+        except Exception as e:
+            last_error = e
+            print(f"[DataCache] Attempt {attempt + 1} failed for {symbol}: {e}")
+
+    if last_error:
+        print(f"[DataCache] All {max_retries} attempts failed for {symbol}: {last_error}")
+    return None
+
+
+def _fetch_stock_from_eastmoney(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """东方财富个股接口."""
+    return _retry_fetch(
+        lambda s, st, ed: ak.stock_zh_a_hist(symbol=s, period="daily", start_date=st, end_date=ed, adjust="qfq"),
+        symbol, start, end,
+        max_retries=3, base_delay=3.0,
+    )
+
+
+def _fetch_stock_from_sina(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """新浪个股接口."""
+    return _retry_fetch(
+        lambda s, st, ed: __fetch_sina_stock_raw(s, st, ed),
+        symbol, start, end,
+        max_retries=3, base_delay=2.0,
+    )
+
+
+def __fetch_sina_stock_raw(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """新浪个股原始获取（用于重试封装）."""
+    start_fmt = f"{start[:4]}-{start[4:6]}-{start[6:]}"
+    end_fmt = f"{end[:4]}-{end[4:6]}-{end[6:]}"
+    sina_symbol = _add_exchange_prefix(symbol)
+    df = ak.stock_zh_a_daily(symbol=sina_symbol, start_date=start_fmt, end_date=end_fmt)
+    if df is not None and not df.empty:
+        return df
+    return None
+
+
+def _fetch_etf_from_eastmoney(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """东方财富ETF接口（fund_etf_hist_em）."""
+    return _retry_fetch(
+        lambda s, st, ed: ak.fund_etf_hist_em(symbol=s, period="daily", start_date=st, end_date=ed, adjust="qfq"),
+        symbol, start, end,
+        max_retries=3, base_delay=3.0,
+    )
+
+
+def _fetch_etf_from_sina(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """新浪ETF接口（fund_etf_hist_sina）."""
+    return _retry_fetch(
+        lambda s, st, ed: __fetch_sina_etf_raw(s, st, ed),
+        symbol, start, end,
+        max_retries=3, base_delay=2.0,
+    )
+
+
+def __fetch_sina_etf_raw(symbol: str, start: str, end: str) -> pd.DataFrame | None:
+    """新浪ETF原始获取（用于重试封装）."""
+    sina_symbol = _add_exchange_prefix(symbol)
+    df = ak.fund_etf_hist_sina(symbol=sina_symbol)
+    if df is not None and not df.empty:
+        df["date"] = pd.to_datetime(df["date"])
+        start_dt = pd.to_datetime(start)
+        end_dt = pd.to_datetime(end)
+        df = df[(df["date"] >= start_dt) & (df["date"] <= end_dt)].copy()
+        if not df.empty:
             return df
-    except Exception as e:
-        print(f"[DataCache] Sina failed for {symbol}: {e}")
     return None
 
 
 def _fetch_from_tencent(symbol: str, start: str, end: str) -> pd.DataFrame | None:
     """腾讯接口（已失效，保留函数签名避免外部调用报错）."""
-    # ak.stock_zh_a_hist_tx 当前返回 ValueError: invalid literal for int() with base 10: 'i'
-    # 直接返回 None 避免无效请求和错误日志刷屏
-    return None
-
-
-def _fetch_etf_from_cache_or_placeholder(symbol: str, start: str, end: str) -> pd.DataFrame | None:
-    """ETF历史数据占位（当前akshare无可用免费ETF历史接口）."""
-    print(f"[DataCache] ETF historical data ({symbol}) is not available via akshare currently")
-    return None
-
-
-def _fetch_from_163(symbol: str, start: str, end: str) -> pd.DataFrame | None:
-    """网易接口（备用）."""
-    try:
-        # 网易接口需要转换日期格式
-        start_fmt = f"{start[:4]}-{start[4:6]}-{start[6:]}"
-        end_fmt = f"{end[:4]}-{end[4:6]}-{end[6:]}"
-        netease_symbol = _add_exchange_prefix(symbol)
-        df = ak.stock_zh_a_daily(symbol=netease_symbol, start_date=start_fmt, end_date=end_fmt)
-        if df is not None and not df.empty:
-            # 网易/新浪返回英文列名，与 get_ohlcv 下游标准化保持一致
-            return df
-    except Exception as e:
-        print(f"[DataCache] 163 failed for {symbol}: {e}")
     return None
 
 
 def fetch_ohlcv_with_fallback(symbol: str, start: str, end: str) -> pd.DataFrame | None:
     """带备用接口的数据获取."""
-    # 尝试多个接口（按当前可用性排序）
-    sources = [
-        ("sina", _fetch_from_sina),            # 新浪当前可用
-        ("163", _fetch_from_163),              # 网易备用（同新浪接口）
-        ("eastmoney", _fetch_from_eastmoney),  # 东财数据质量高但当前被封
-    ]
+    # ETF 使用专门接口（东财ETF接口目前可用性较好）
+    if _is_etf(symbol):
+        sources = [
+            ("eastmoney_etf", _fetch_etf_from_eastmoney),
+            ("sina_etf", _fetch_etf_from_sina),
+        ]
+    else:
+        sources = [
+            ("eastmoney", _fetch_stock_from_eastmoney),
+            ("sina", _fetch_stock_from_sina),
+        ]
 
-    for source_name, fetch_func in sources:
+    for idx, (source_name, fetch_func) in enumerate(sources):
+        # 数据源之间增加间隔，降低被限流概率
+        if idx > 0:
+            time.sleep(random.uniform(1.0, 2.0))
         df = fetch_func(symbol, start, end)
         if df is not None and not df.empty and len(df) >= 20:
             print(f"[DataCache] {symbol} fetched from {source_name}, rows={len(df)}")
@@ -137,22 +198,43 @@ def _make_cache_key(symbol: str, start: str, end: str) -> str:
 
 
 def get_cached_data(symbol: str, start: str, end: str) -> pd.DataFrame | None:
-    """从缓存获取数据."""
-    key = _make_cache_key(symbol, start, end)
+    """从缓存获取数据（支持范围覆盖裁剪）.
+
+    如果缓存的日期范围覆盖了请求范围，则裁剪后返回，避免重复请求外部接口。
+    """
     db = CacheSession()
     try:
-        record = db.query(CachedData).filter(CachedData.cache_key == key).first()
-        if record:
+        records = (
+            db.query(CachedData)
+            .filter(CachedData.symbol == symbol)
+            .order_by(CachedData.created_at.desc())
+            .all()
+        )
+        for record in records:
             # 检查缓存是否过期（7天）
             age = datetime.utcnow() - record.created_at
-            if age.days < 7:
-                df = pd.read_json(record.data_json)
-                print(f"[DataCache] Cache hit for {symbol} ({record.source}), rows={record.row_count}")
-                return df
-            else:
-                # 删除过期缓存
+            if age.days >= 7:
                 db.delete(record)
                 db.commit()
+                continue
+
+            # 缓存范围覆盖请求范围时才使用（允许前后5天边界误差）
+            try:
+                cache_start = datetime.strptime(record.start_date, "%Y%m%d")
+                cache_end = datetime.strptime(record.end_date, "%Y%m%d")
+                req_start = datetime.strptime(start, "%Y%m%d")
+                req_end = datetime.strptime(end, "%Y%m%d")
+                if cache_start <= req_start + timedelta(days=5) and cache_end >= req_end - timedelta(days=5):
+                    from io import StringIO
+                    df = pd.read_json(StringIO(record.data_json))
+                    if "date" in df.columns:
+                        df["date"] = pd.to_datetime(df["date"])
+                        df = df[(df["date"] >= req_start) & (df["date"] <= req_end)].copy()
+                    if not df.empty and len(df) >= 20:
+                        print(f"[DataCache] Cache hit for {symbol} ({record.source}), rows={len(df)}")
+                        return df
+            except Exception as e:
+                print(f"[DataCache] Cache parse failed for {symbol}: {e}")
     finally:
         db.close()
     return None

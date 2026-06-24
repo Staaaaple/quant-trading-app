@@ -39,7 +39,7 @@ class DataEnricher:
     async def enrich(
         self,
         candidates: list[StockCandidate],
-        max_concurrent: int = 10,
+        max_concurrent: int = 30,
     ) -> list[EnrichedCandidate]:
         """ enriching 候选标的列表.
 
@@ -52,12 +52,15 @@ class DataEnricher:
         """
         logger.info(f"开始 enriching {len(candidates)} 只候选标的")
 
+        # 预加载全市场公共数据，避免每只股票重复请求
+        market_data = await self._preload_market_data()
+
         # 使用信号量控制并发
         semaphore = asyncio.Semaphore(max_concurrent)
 
         async def enrich_one(candidate: StockCandidate) -> EnrichedCandidate:
             async with semaphore:
-                return await self._enrich_single(candidate)
+                return await self._enrich_single(candidate, market_data)
 
         tasks = [enrich_one(c) for c in candidates]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -74,16 +77,67 @@ class DataEnricher:
         logger.info(f" enriching 完成: {len(enriched)}/{len(candidates)}")
         return enriched
 
-    async def _enrich_single(self, candidate: StockCandidate) -> EnrichedCandidate:
+    async def _preload_market_data(self) -> dict:
+        """预加载全市场公共数据，避免每只股票重复请求."""
+        loop = asyncio.get_event_loop()
+        market_data = {}
+
+        try:
+            market_data["fundamental"] = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, lambda: ak.stock_yjbb_em(date=self._get_latest_report_date())
+                ),
+                timeout=10.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("预加载基本面数据超时")
+            market_data["fundamental"] = None
+        except Exception as e:
+            logger.warning(f"预加载基本面数据失败: {e}")
+            market_data["fundamental"] = None
+
+        try:
+            market_data["capital_flow"] = await asyncio.wait_for(
+                loop.run_in_executor(None, ak.stock_fund_flow_individual),
+                timeout=10.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("预加载资金面数据超时")
+            market_data["capital_flow"] = None
+        except Exception as e:
+            logger.warning(f"预加载资金面数据失败: {e}")
+            market_data["capital_flow"] = None
+
+        try:
+            market_data["shareholder"] = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, lambda: ak.stock_gdfx_free_holding_detail_em(
+                        date=self._get_latest_report_date()
+                    )
+                ),
+                timeout=10.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("预加载股东户数数据超时")
+            market_data["shareholder"] = None
+        except Exception as e:
+            logger.warning(f"预加载股东户数数据失败: {e}")
+            market_data["shareholder"] = None
+
+        return market_data
+
+    async def _enrich_single(
+        self, candidate: StockCandidate, market_data: dict
+    ) -> EnrichedCandidate:
         """ enriching 单个候选标的."""
         enriched = EnrichedCandidate.from_candidate(candidate)
 
         # 并行获取四个维度数据
         tasks = [
-            self._fetch_fundamental(candidate),
+            self._fetch_fundamental(candidate, market_data.get("fundamental")),
             self._fetch_technical(candidate),
-            self._fetch_capital_flow(candidate),
-            self._fetch_control_degree(candidate),
+            self._fetch_capital_flow(candidate, market_data.get("capital_flow")),
+            self._fetch_control_degree(candidate, market_data.get("shareholder")),
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -114,27 +168,29 @@ class DataEnricher:
     # ──────────────────────────────────────────────────────────────────────────
 
     async def _fetch_fundamental(
-        self, candidate: StockCandidate
+        self,
+        candidate: StockCandidate,
+        market_df: pd.DataFrame | None = None,
     ) -> Optional[FundamentalMetrics]:
         """获取基本面数据."""
         try:
-            loop = asyncio.get_event_loop()
-
             if candidate.asset_class == "ETF":
                 # ETF基本面简化处理
                 return FundamentalMetrics(score=0.6)
 
-            # 获取业绩快报
-            df = await loop.run_in_executor(
-                None,
-                lambda: ak.stock_yjbb_em(date=self._get_latest_report_date()),
-            )
+            # 使用预加载的全市场数据，避免重复请求
+            if market_df is None:
+                loop = asyncio.get_event_loop()
+                market_df = await loop.run_in_executor(
+                    None,
+                    lambda: ak.stock_yjbb_em(date=self._get_latest_report_date()),
+                )
 
-            if df is None or df.empty:
+            if market_df is None or market_df.empty:
                 return None
 
             # 匹配当前股票
-            stock_df = df[df["股票代码"] == candidate.symbol]
+            stock_df = market_df[market_df["股票代码"] == candidate.symbol]
             if stock_df.empty:
                 return None
 
@@ -237,13 +293,16 @@ class DataEnricher:
                 # ETF历史数据当前无可用免费接口
                 return None
 
-            df = await loop.run_in_executor(
-                None,
-                lambda: fetch_stock_data(
-                    symbol=candidate.symbol,
-                    start=self._get_date_120d_ago(),
-                    end=self._get_today(),
+            df = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: fetch_stock_data(
+                        symbol=candidate.symbol,
+                        start=self._get_date_30d_ago(),
+                        end=self._get_today(),
+                    ),
                 ),
+                timeout=5.0,
             )
 
             if df is None or df.empty or len(df) < 20:
@@ -274,9 +333,9 @@ class DataEnricher:
                 metrics.vol_ratio = volumes.iloc[-1] / volumes.tail(20).mean()
 
             # 波动率
-            if len(closes) >= 120:
+            if len(closes) >= 30:
                 returns = closes.pct_change().dropna()
-                metrics.volatility_120d = returns.tail(120).std() * np.sqrt(252) * 100
+                metrics.volatility_120d = returns.tail(30).std() * np.sqrt(252) * 100
 
             # 3日/20日涨幅
             if len(closes) >= 4:
@@ -382,7 +441,9 @@ class DataEnricher:
     # ──────────────────────────────────────────────────────────────────────────
 
     async def _fetch_capital_flow(
-        self, candidate: StockCandidate
+        self,
+        candidate: StockCandidate,
+        market_df: pd.DataFrame | None = None,
     ) -> Optional[CapitalFlowMetrics]:
         """获取资金面数据."""
         try:
@@ -390,19 +451,19 @@ class DataEnricher:
                 # ETF资金面简化
                 return CapitalFlowMetrics(score=0.6)
 
-            loop = asyncio.get_event_loop()
+            # 使用预加载的全市场数据
+            if market_df is None:
+                loop = asyncio.get_event_loop()
+                market_df = await loop.run_in_executor(
+                    None,
+                    ak.stock_fund_flow_individual,
+                )
 
-            # 获取个股资金流向（使用可用的 stock_fund_flow_individual 替代失效接口）
-            df = await loop.run_in_executor(
-                None,
-                lambda: ak.stock_fund_flow_individual(),
-            )
-
-            if df is None or df.empty:
+            if market_df is None or market_df.empty:
                 return None
 
             # 过滤出当前股票
-            stock_df = df[df["代码"] == candidate.symbol]
+            stock_df = market_df[market_df["代码"] == candidate.symbol]
             if stock_df.empty:
                 return None
 
@@ -461,7 +522,9 @@ class DataEnricher:
     # ──────────────────────────────────────────────────────────────────────────
 
     async def _fetch_control_degree(
-        self, candidate: StockCandidate
+        self,
+        candidate: StockCandidate,
+        shareholder_df: pd.DataFrame | None = None,
     ) -> Optional[ControlDegreeMetrics]:
         """获取控盘程度数据."""
         try:
@@ -473,32 +536,37 @@ class DataEnricher:
 
             metrics = ControlDegreeMetrics()
 
-            # 获取机构持仓
-            try:
-                df = await loop.run_in_executor(
-                    None,
-                    lambda: ak.stock_institute_hold_detail(
-                        stock=candidate.symbol,
-                    ),
-                )
-                if df is not None and not df.empty:
-                    # 最新一期机构持仓比例
-                    hold_ratio = df.get("机构持仓比例", pd.Series()).iloc[0]
-                    metrics.institution_hold_ratio = self._safe_float(hold_ratio)
-            except Exception:
-                pass
+            # 获取机构持仓（暂时跳过：akshare单股接口过慢，拖累整体选股性能。
+            # 控盘度仍基于股东户数变化计算，功能可用。后续可接入更快的机构持仓数据源）
+            # try:
+            #     df = await asyncio.wait_for(
+            #         loop.run_in_executor(
+            #             None,
+            #             lambda: ak.stock_institute_hold_detail(stock=candidate.symbol),
+            #         ),
+            #         timeout=3.0,
+            #     )
+            #     if df is not None and not df.empty:
+            #         # 最新一期机构持仓比例
+            #         hold_ratio = df.get("机构持仓比例", pd.Series()).iloc[0]
+            #         metrics.institution_hold_ratio = self._safe_float(hold_ratio)
+            # except asyncio.TimeoutError:
+            #     logger.debug(f"机构持仓获取超时 {candidate.symbol}，使用fallback")
+            # except Exception:
+            #     pass
 
-            # 获取股东户数变化（使用最新报告期）
+            # 获取股东户数变化（使用预加载的全市场数据）
             try:
-                df = await loop.run_in_executor(
-                    None,
-                    lambda: ak.stock_gdfx_free_holding_detail_em(
-                        date=self._get_latest_report_date(),
-                    ),
-                )
-                if df is not None and not df.empty:
+                if shareholder_df is None:
+                    shareholder_df = await loop.run_in_executor(
+                        None,
+                        lambda: ak.stock_gdfx_free_holding_detail_em(
+                            date=self._get_latest_report_date(),
+                        ),
+                    )
+                if shareholder_df is not None and not shareholder_df.empty:
                     # 过滤当前股票
-                    stock_df = df[df["股票代码"] == candidate.symbol]
+                    stock_df = shareholder_df[shareholder_df["股票代码"] == candidate.symbol]
                     if len(stock_df) >= 2:
                         latest = stock_df.iloc[0]
                         prev = stock_df.iloc[1]
@@ -589,6 +657,13 @@ class DataEnricher:
         from datetime import datetime, timedelta
 
         date = datetime.now() - timedelta(days=150)  # 多取一些确保够用
+        return date.strftime("%Y%m%d")
+
+    def _get_date_30d_ago(self) -> str:
+        """获取30天前的日期（YYYYMMDD格式）."""
+        from datetime import datetime, timedelta
+
+        date = datetime.now() - timedelta(days=45)  # 多取一些确保够用
         return date.strftime("%Y%m%d")
 
     def _get_today(self) -> str:

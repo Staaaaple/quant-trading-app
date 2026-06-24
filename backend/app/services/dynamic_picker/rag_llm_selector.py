@@ -189,7 +189,11 @@ class RAGLLMSelector:
 
         try:
             if self.llm:
-                response = await self.llm.generate(prompt)
+                response = await self.llm.generate(
+                    prompt,
+                    max_tokens=256,
+                    temperature=0.1,
+                )
                 # 尝试解析JSON
                 json_start = response.find("{")
                 json_end = response.rfind("}") + 1
@@ -434,7 +438,7 @@ class RAGLLMSelector:
         evaluations = []
 
         # 分批处理，避免单次请求过大
-        batch_size = 5
+        batch_size = 10
         for i in range(0, len(candidates), batch_size):
             batch_candidates = candidates[i:i + batch_size]
             batch_profiles = profiles[i:i + batch_size]
@@ -487,7 +491,11 @@ class RAGLLMSelector:
 请确保输出是合法的JSON数组格式。["""
 
         try:
-            response = await self.llm.generate(prompt)
+            response = await self.llm.generate(
+                prompt,
+                max_tokens=256,
+                temperature=0.1,
+            )
             # 尝试解析JSON
             evaluations = self._parse_llm_response(response, candidates)
             return evaluations

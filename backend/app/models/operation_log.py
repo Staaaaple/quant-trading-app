@@ -93,6 +93,37 @@ class WeeklyReport(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class MarketReport(Base):
+    """市场报告记录（每日/每周）."""
+    __tablename__ = "market_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=True)
+
+    # 报告类型: daily / weekly
+    report_type = Column(String(10), nullable=False, default="daily")
+
+    # 报告日期
+    report_date = Column(String(10), nullable=False)  # YYYY-MM-DD
+
+    # 分页1：今日国内股票市场交易报告
+    page1_market_overview = Column(JSON, nullable=True)
+
+    # 分页2：资产组合今日表现
+    page2_portfolio_performance = Column(JSON, nullable=True)
+
+    # 分页3：本周市场情况
+    page3_weekly_market = Column(JSON, nullable=True)
+
+    # 状态
+    is_read = Column(Boolean, default=False)
+    read_at = Column(DateTime, nullable=True)
+    pushed_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 class PushNotification(Base):
     """推送通知."""
     __tablename__ = "push_notifications"

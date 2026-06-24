@@ -21,5 +21,6 @@ class UserRead(UserBase):
 
     id: int
     is_active: bool
+    is_demo: bool
     created_at: datetime
     updated_at: datetime
