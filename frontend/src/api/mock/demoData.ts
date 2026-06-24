@@ -141,24 +141,24 @@ export const DEMO_INVESTOR_PROFILE: Record<string, any> = {
 export const DEMO_MARKET_SIGNAL: Record<string, any> = {
   date: today(),
   composite_score: 68.5,
-  market_mood: '中性偏乐观',
-  market_cycle: '复苏期',
+  market_mood: '中性偏悲观',
+  market_cycle: '衰退期',
   macro: {
-    cycle_phase: '复苏',
-    gdp_trend: '企稳',
-    inflation_level: '温和',
-    liquidity: '中性',
-    interest_rate: '持平',
-    score: 65.0,
+    cycle_phase: '衰退',
+    gdp_trend: '下行',
+    inflation_level: '下行',
+    liquidity: '偏紧',
+    interest_rate: '下行',
+    score: 42.0,
     cycle_analysis: {
-      final_phase: '复苏期',
-      final_description: '经济从底部回升，企业盈利改善，风险偏好逐步恢复',
-      final_asset_preference: '股票 > 债券 > 现金',
-      confidence: 0.72,
-      fused_coordinates: { x: 0.35, y: 0.55 },
+      final_phase: '衰退期',
+      final_description: '经济下行、通胀回落，企业盈利承压，风险资产承压，防御性资产配置优先',
+      final_asset_preference: '债券 > 现金 > 股票',
+      confidence: 0.68,
+      fused_coordinates: { x: 0.25, y: 0.35 },
       model_results: [
-        { model: '美林时钟', phase: '复苏', description: '经济上行+通胀下行', asset_preference: '股票', score: 0.70, inputs: { gdp: 0.6, inflation: 0.3 } },
-        { model: '货币信用周期', phase: '宽货币+宽信用', description: '流动性充裕，信用扩张', asset_preference: '股票', score: 0.75, inputs: { money: 0.7, credit: 0.6 } },
+        { model: '美林时钟', phase: '衰退', description: '经济下行+通胀下行', asset_preference: '债券', score: 0.75, inputs: { gdp: 0.3, inflation: 0.2 } },
+        { model: '货币信用周期', phase: '宽货币+紧信用', description: '流动性宽松但信用扩张不足', asset_preference: '债券', score: 0.65, inputs: { money: 0.7, credit: 0.3 } },
       ],
       consistency: 0.72,
       data_completeness: 0.85,
@@ -382,7 +382,7 @@ export const DEMO_BACKTEST = DEMO_BACKTESTS[0]
 
 // ── 演示市场报告：分页1 ──
 const DEMO_PAGE1: Record<string, any> = {
-  market_summary: '今日市场窄幅震荡，主要指数小幅收涨，北向资金净流入约 25 亿元。当前市场处于复苏期，综合情绪中性偏乐观，五层信号综合评分 68.5。',
+  market_summary: '今日市场窄幅震荡，主要指数小幅收跌，北向资金净流出约 15 亿元。当前市场处于衰退期，综合情绪中性偏悲观，五层信号综合评分 42.0。',
   index_performance: {
     indices: [
       { name: '上证指数', symbol: '000001', change_pct: 0.34, open: 3040.12, high: 3055.67, low: 3038.45, close: 3050.21, prev_close: 3039.88, volume: 320000000, amount: 42000000000 },
