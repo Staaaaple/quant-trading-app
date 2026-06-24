@@ -1106,9 +1106,9 @@ function buildEcosystem(): Record<string, any> {
     value: [
       avg(items.map((s) => s.health_birth_score)),
       avg(items.map((s) => s.gene_diversity_score * 100)),
-      avg(items.map((s) => 1 - s.metabolic_rate)),
-      avg(items.map((s) => s.niche_width)),
-      avg(items.map((s) => 1 - s.inbreeding_coefficient)),
+      avg(items.map((s) => (1 - s.metabolic_rate) * 100)),
+      avg(items.map((s) => s.niche_width * 100)),
+      avg(items.map((s) => (1 - s.inbreeding_coefficient) * 100)),
     ],
   }))
 
@@ -1126,15 +1126,29 @@ function buildEcosystem(): Record<string, any> {
   }))
 
   const links: { source: string; target: string; value: number }[] = []
+  // 资产类别亲缘关系：同大类资产策略关联度更高
+  const assetClassAffinity: Record<string, Record<string, number>> = {
+    ETF: { ETF: 0.35, stock: 0.20, bond: 0.05, cash: 0.02, commodity: 0.10 },
+    stock: { ETF: 0.20, stock: 0.30, bond: 0.02, cash: 0.02, commodity: 0.08 },
+    bond: { ETF: 0.05, stock: 0.02, bond: 0.40, cash: 0.25, commodity: 0.03 },
+    cash: { ETF: 0.02, stock: 0.02, bond: 0.25, cash: 0.30, commodity: 0.02 },
+    commodity: { ETF: 0.10, stock: 0.08, bond: 0.03, cash: 0.02, commodity: 0.35 },
+  }
+  const portfolioBindings = DEMO_PORTFOLIO.bindings as Array<{ strategy_id: string; asset_class: string }>
+  const strategyAssetClass: Record<string, string> = {}
+  portfolioBindings.forEach((b) => { strategyAssetClass[b.strategy_id] = b.asset_class })
+
   for (let i = 0; i < allDNA.length; i++) {
     for (let j = i + 1; j < allDNA.length; j++) {
       const a = allDNA[i]
       const b = allDNA[j]
-      // 同家族相似度更高
-      const sameFamily = a.family_id === b.family_id ? 0.3 : 0.0
+      const classA = strategyAssetClass[a.strategy_id] || 'other'
+      const classB = strategyAssetClass[b.strategy_id] || 'other'
+      const assetAffinity = (assetClassAffinity[classA] && assetClassAffinity[classA][classB]) || 0.05
+      const sameFamily = a.family_id === b.family_id ? 0.25 : 0.0
       const geneOverlap = a.feature_genes.filter((g: string) => b.feature_genes.includes(g)).length / Math.max(a.feature_genes.length, b.feature_genes.length)
-      const similarity = Math.min(0.85, sameFamily + geneOverlap * 0.5 + 0.05)
-      if (similarity > 0.15) {
+      const similarity = Math.min(0.92, sameFamily + assetAffinity + geneOverlap * 0.25 + 0.08)
+      if (similarity > 0.18) {
         links.push({ source: a.strategy_id, target: b.strategy_id, value: Math.round(similarity * 100) / 100 })
       }
     }

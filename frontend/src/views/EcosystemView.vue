@@ -159,9 +159,9 @@ const portfolioMetrics = computed(() => {
     value: [
       avg(items.map(s => s.health_birth_score)),
       avg(items.map(s => s.gene_diversity_score * 100)),
-      avg(items.map(s => 1 - s.metabolic_rate)),
-      avg(items.map(s => s.niche_width)),
-      avg(items.map(s => 1 - s.homogeneity_risk)),
+      avg(items.map(s => (1 - s.metabolic_rate) * 100)),
+      avg(items.map(s => s.niche_width * 100)),
+      avg(items.map(s => (1 - s.homogeneity_risk) * 100)),
     ],
   }))
 
