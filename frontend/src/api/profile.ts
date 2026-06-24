@@ -5,6 +5,7 @@ export interface Question {
   id: string
   category: string
   question: string
+  multi?: boolean
   options: {
     label: string
     scores: Record<string, number>
