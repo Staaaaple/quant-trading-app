@@ -8,6 +8,7 @@ import { dnaApi } from './api/dna'
 import UserSwitcher from './components/UserSwitcher.vue'
 
 import { useUserStore } from './stores/user'
+import { DEMO_PORTFOLIO_DESIGN_RESULT, DEMO_MARKET_SIGNAL } from './api/mock/demoData'
 
 const route = useRoute()
 const router = useRouter()
@@ -111,6 +112,16 @@ async function loadEcoAlert() {
 
 onMounted(async () => {
   await userStore.loadUsers()
+
+  // 纯前端演示版：为演示用户预置组合和市场信号缓存，确保各页面直接访问时也有数据
+  if (userStore.isDemo) {
+    if (!sessionStorage.getItem('latest_portfolio')) {
+      sessionStorage.setItem('latest_portfolio', JSON.stringify(DEMO_PORTFOLIO_DESIGN_RESULT))
+    }
+    if (!sessionStorage.getItem('latest_market_signal')) {
+      sessionStorage.setItem('latest_market_signal', JSON.stringify(DEMO_MARKET_SIGNAL))
+    }
+  }
 
   // 切离演示用户后，清除组合动画已播放标记，确保下次切回演示用户仍会播放
   if (!userStore.isDemo) {
