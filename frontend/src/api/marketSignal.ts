@@ -1,4 +1,5 @@
-import client from './client'
+import { delay } from './mock/utils'
+import { DEMO_MARKET_SIGNAL } from './mock/demoData'
 
 export interface MacroLayer {
   cycle_phase: string | null
@@ -73,6 +74,6 @@ export interface MarketSignalLatest {
 }
 
 export const marketSignalApi = {
-  getLatest: () => client.get<MarketSignalLatest>('/market-signals/latest').then(r => r.data),
-  collect: () => client.post<unknown>('/market-signals/collect').then(r => r.data),
+  getLatest: () => delay(400).then(() => DEMO_MARKET_SIGNAL as MarketSignalLatest),
+  collect: () => delay(500).then(() => ({ success: true })),
 }

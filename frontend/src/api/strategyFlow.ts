@@ -1,4 +1,5 @@
-import { request } from './client'
+import { delay } from './mock/utils'
+import { DEMO_STRATEGY_FLOWS } from './mock/demoData'
 
 export interface StrategyFlow {
   id: number
@@ -21,26 +22,21 @@ export interface StrategyFlowCreatePayload {
 
 export const strategyFlowApi = {
   list(): Promise<StrategyFlow[]> {
-    return request('/strategy-flows')
+    return delay(300).then(() => DEMO_STRATEGY_FLOWS as StrategyFlow[])
   },
-  get(flow_id: string): Promise<StrategyFlow> {
-    return request(`/strategy-flows/${flow_id}`)
+  get(_flow_id: string): Promise<StrategyFlow> {
+    return delay(300).then(() => DEMO_STRATEGY_FLOWS[0] as StrategyFlow)
   },
   create(payload: StrategyFlowCreatePayload): Promise<StrategyFlow> {
-    return request('/strategy-flows', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+    return delay(500).then(() => ({ ...DEMO_STRATEGY_FLOWS[0], ...payload } as StrategyFlow))
   },
   update(flow_id: string, payload: Partial<StrategyFlowCreatePayload>): Promise<StrategyFlow> {
-    return request(`/strategy-flows/${flow_id}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
+    return delay(400).then(() => {
+      const existing = DEMO_STRATEGY_FLOWS.find((f: any) => f.flow_id === flow_id) || DEMO_STRATEGY_FLOWS[0]
+      return { ...existing, ...payload } as StrategyFlow
     })
   },
-  remove(flow_id: string): Promise<void> {
-    return request(`/strategy-flows/${flow_id}`, {
-      method: 'DELETE',
-    })
+  remove(_flow_id: string): Promise<void> {
+    return delay(300).then(() => undefined)
   },
 }

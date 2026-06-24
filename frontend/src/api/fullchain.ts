@@ -1,4 +1,5 @@
-import client from './client'
+import { delay } from './mock/utils'
+import { DEMO_PORTFOLIO, DEMO_MARKET_SIGNAL } from './mock/demoData'
 
 // ── 教学引导 ──
 
@@ -7,8 +8,8 @@ export interface OnboardingPayload {
   portfolio: Record<string, any>
 }
 
-export function generateOnboarding(payload: OnboardingPayload) {
-  return client.post('/fullchain/onboarding/generate', payload)
+export function generateOnboarding(_payload: OnboardingPayload) {
+  return delay(500).then(() => ({ data: { success: true, data: { message: ' onboarding 生成完成' } } }))
 }
 
 // ── 建仓助手 ──
@@ -20,12 +21,12 @@ export interface BuildingPlanPayload {
   market_cycle?: string
 }
 
-export function createBuildingPlan(payload: BuildingPlanPayload) {
-  return client.post('/fullchain/building/plan', payload)
+export function createBuildingPlan(_payload: BuildingPlanPayload) {
+  return delay(500).then(() => ({ data: { success: true, data: { batches: 3, plan: [] } } }))
 }
 
-export function getBatchDetail(batchNo: number, payload: Omit<BuildingPlanPayload, 'market_cycle'>) {
-  return client.post(`/fullchain/building/batch/${batchNo}`, payload)
+export function getBatchDetail(_batchNo: number, _payload: Omit<BuildingPlanPayload, 'market_cycle'>) {
+  return delay(400).then(() => ({ data: { success: true, data: { batch_no: _batchNo, holdings: [] } } }))
 }
 
 // ── 推送系统 ──
@@ -36,23 +37,23 @@ export interface DailyPushPayload {
   strategy_signals: any[]
 }
 
-export function generateDailyPush(payload: DailyPushPayload) {
-  return client.post('/fullchain/push/daily', payload)
+export function generateDailyPush(_payload: DailyPushPayload) {
+  return delay(500).then(() => ({ data: { success: true, data: { message: '今日推送已生成' } } }))
 }
 
-export function generateLifespanAlert(payload: {
+export function generateLifespanAlert(_payload: {
   portfolio: Record<string, any>
   lifespan_data: Record<string, any>
 }) {
-  return client.post('/fullchain/push/lifespan-alert', payload)
+  return delay(400).then(() => ({ data: { success: true, data: { message: '寿命预警已生成' } } }))
 }
 
-export function generateCycleAlert(payload: {
+export function generateCycleAlert(_payload: {
   old_cycle: string
   new_cycle: string
   market_signal: Record<string, any>
 }) {
-  return client.post('/fullchain/push/cycle-alert', payload)
+  return delay(400).then(() => ({ data: { success: true, data: { message: '周期切换提醒已生成' } } }))
 }
 
 // ── 调仓提醒 ──
@@ -64,50 +65,49 @@ export interface RebalanceCheckPayload {
   last_rebalance_date?: string
 }
 
-export function checkRebalance(payload: RebalanceCheckPayload) {
-  return client.post('/fullchain/rebalance/check', payload)
+export function checkRebalance(_payload: RebalanceCheckPayload) {
+  return delay(500).then(() => ({ data: { success: true, data: { need_rebalance: false, triggers: [] } } }))
 }
 
-export function getAlternativeStrategies(payload: {
+export function getAlternativeStrategies(_payload: {
   target_holding: Record<string, any>
   strategy_pool: any[]
   profile: Record<string, any>
   market_signal: Record<string, any>
   top_n?: number
 }) {
-  return client.post('/fullchain/rebalance/alternatives', payload)
+  return delay(500).then(() => ({ data: { success: true, data: { alternatives: [] } } }))
 }
 
-export function createRebalancePlan(payload: {
+export function createRebalancePlan(_payload: {
   portfolio: Record<string, any>
   triggers: any[]
   alternatives: Record<string, any[]>
 }) {
-  return client.post('/fullchain/rebalance/plan', payload)
+  return delay(500).then(() => ({ data: { success: true, data: { plan_id: 'plan_demo_001', actions: [] } } }))
 }
 
 // ── 寿命监控 ──
 
 export function runLifespanCheck() {
-  return client.post('/fullchain/lifespan/run-check')
+  return delay(500).then(() => ({ data: { success: true, data: { message: '寿命检查完成' } } }))
 }
 
-export function getLifespanTrend(strategyId: string, months?: number) {
-  const params = months ? `?months=${months}` : ''
-  return client.get(`/fullchain/lifespan/trend/${strategyId}${params}`)
+export function getLifespanTrend(_strategyId: string, _months?: number) {
+  return delay(400).then(() => ({ data: { success: true, data: { trend: [] } } }))
 }
 
 export function getLifespanAlerts() {
-  return client.get('/fullchain/lifespan/alerts')
+  return delay(400).then(() => ({ data: { success: true, data: { alerts: [] } } }))
 }
 
-export function getPortfolioLifespan(portfolioId: string) {
-  return client.get(`/fullchain/lifespan/portfolio/${portfolioId}`)
+export function getPortfolioLifespan(_portfolioId: string) {
+  return delay(400).then(() => ({ data: { success: true, data: { portfolio_id: _portfolioId, lifespan_months: 30 } } }))
 }
 
-export function getReplacementStrategies(payload: {
+export function getReplacementStrategies(_payload: {
   strategy_id: string
   top_k?: number
 }) {
-  return client.post('/fullchain/lifespan/replacement', payload)
+  return delay(500).then(() => ({ data: { success: true, data: { replacements: [] } } }))
 }

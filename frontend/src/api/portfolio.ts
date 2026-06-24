@@ -1,4 +1,9 @@
-import client from './client'
+import { delay } from './mock/utils'
+import {
+  DEMO_PORTFOLIO_DESIGN_RESULT,
+  DEMO_PORTFOLIO_TASK,
+  DEMO_MARKET_SIGNAL,
+} from './mock/demoData'
 
 export interface PortfolioDesignPayload {
   profile_vector: Record<string, number>
@@ -139,69 +144,67 @@ export interface PortfolioProgressEvent {
 }
 
 /**
- * Portfolio API - 仅使用RAG版本
- *
- * 所有组合设计都通过 /portfolios/design-with-rag 端点，
- * 启用RAG质量门控确保组合质量。
+ * Portfolio API - Mock version
  */
 export const portfolioApi = {
-  /**
-   * 设计投资组合（带RAG质检）
-   *
-   * 这是唯一的设计入口，自动启用RAG质量门控。
-   * 非RAG版本已被移除，确保所有组合都经过质检。
-   */
   design: (payload: PortfolioDesignPayload) =>
-    client.post<PortfolioDesignResult>('/portfolios/design-with-rag', {
-      ...payload,
-      use_rag_gate: true,  // 强制启用RAG
-      rag_strictness: 'normal',
-    }).then(r => r.data),
+    delay(800).then(() => {
+      const result = { ...DEMO_PORTFOLIO_DESIGN_RESULT } as PortfolioDesignResult
+      // Merge any provided payload data
+      if (payload.market_signal) {
+        result.portfolio = {
+          ...result.portfolio,
+          ...DEMO_PORTFOLIO_DESIGN_RESULT.portfolio,
+        }
+      }
+      return result
+    }),
 
-  /**
-   * 提交异步组合设计任务.
-   *
-   * 立即返回 task_id，后端在后台持续运行。
-   * 同一用户已有 running 任务时返回已有 task_id。
-   */
   designAsync: (payload: PortfolioDesignPayload) =>
-    client.post<PortfolioTask>('/portfolios/design-async', {
-      ...payload,
-      use_rag_gate: true,
-      rag_strictness: 'normal',
-    }).then(r => r.data),
+    delay(500).then(() => {
+      const task = { ...DEMO_PORTFOLIO_TASK } as PortfolioTask
+      if (payload.market_signal) {
+        task.result = { ...DEMO_PORTFOLIO_DESIGN_RESULT } as PortfolioDesignResult
+      }
+      return task
+    }),
 
-  /**
-   * 查询指定任务状态.
-   */
-  getTaskStatus: (taskId: number) =>
-    client.get<PortfolioTask>(`/portfolios/tasks/${taskId}`).then(r => r.data),
+  getTaskStatus: (_taskId: number) =>
+    delay(300).then(() => ({ ...DEMO_PORTFOLIO_TASK } as PortfolioTask)),
 
-  /**
-   * 获取当前用户最新的组合设计任务.
-   */
   getMyLatestTask: () =>
-    client.get<PortfolioTask>('/portfolios/tasks/me').then(r => r.data),
+    delay(300).then(() => ({ ...DEMO_PORTFOLIO_TASK } as PortfolioTask)),
 
-  /**
-   * 设计投资组合（SSE 流式进度版）
-   *
-   * 返回 fetch Response，调用方需手动读取 SSE 流。
-   * 第一个事件可能是 {type: 'task', task_id: ...}。
-   */
   designStream: (payload: PortfolioDesignPayload) => {
-    const url = new URL('/api/v1/portfolios/design-with-rag/stream', window.location.origin)
-    // 通过 POST body 发送参数需要改用 fetch ReadableStream，
-    // 但 SSE 原生只支持 GET/POST。这里用 POST + fetch 手动读取 SSE。
-    const userId = localStorage.getItem('active_user_id')
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (userId) {
-      headers['X-User-Id'] = userId
-    }
-    return fetch(url.toString(), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ ...payload, use_rag_gate: true }),
+    // Return a mock Response-like object that the caller can read
+    const encoder = new TextEncoder()
+    const events: PortfolioProgressEvent[] = [
+      { type: 'task', task_id: 1, step: 'started' },
+      { type: 'progress', task_id: 1, step: 'SAA配置', progress: 25, message: '正在计算战略资产配置...' },
+      { type: 'progress', task_id: 1, step: 'TAA配置', progress: 50, message: '正在计算战术资产配置...' },
+      { type: 'progress', task_id: 1, step: '策略绑定', progress: 75, message: '正在绑定策略...' },
+      { type: 'result', task_id: 1, ...DEMO_PORTFOLIO_DESIGN_RESULT },
+    ]
+
+    const stream = new ReadableStream({
+      start(controller) {
+        let i = 0
+        function push() {
+          if (i >= events.length) {
+            controller.close()
+            return
+          }
+          const event = events[i++]
+          const data = `data: ${JSON.stringify(event)}\n\n`
+          controller.enqueue(encoder.encode(data))
+          setTimeout(push, 300)
+        }
+        setTimeout(push, 100)
+      },
     })
+
+    return Promise.resolve(new Response(stream, {
+      headers: { 'content-type': 'text/event-stream' },
+    }))
   },
 }

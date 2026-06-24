@@ -1,4 +1,5 @@
-import { request } from './client'
+import { delay } from './mock/utils'
+import { DEMO_BACKTEST } from './mock/demoData'
 
 export interface Backtest {
   id: number
@@ -32,26 +33,18 @@ export interface BacktestRunPayload {
 
 export const backtestApi = {
   list(): Promise<Backtest[]> {
-    return request('/backtests')
+    return delay(300).then(() => [DEMO_BACKTEST as Backtest])
   },
-  get(backtest_id: string): Promise<Backtest> {
-    return request(`/backtests/${backtest_id}`)
+  get(_backtest_id: string): Promise<Backtest> {
+    return delay(300).then(() => DEMO_BACKTEST as Backtest)
   },
   create(payload: BacktestCreatePayload): Promise<Backtest> {
-    return request('/backtests', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+    return delay(500).then(() => ({ ...DEMO_BACKTEST, ...payload } as Backtest))
   },
-  run(backtest_id: string, payload: BacktestRunPayload): Promise<Backtest> {
-    return request(`/backtests/${backtest_id}/run`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+  run(_backtest_id: string, payload: BacktestRunPayload): Promise<Backtest> {
+    return delay(800).then(() => ({ ...DEMO_BACKTEST, ...payload } as Backtest))
   },
-  remove(backtest_id: string): Promise<void> {
-    return request(`/backtests/${backtest_id}`, {
-      method: 'DELETE',
-    })
+  remove(_backtest_id: string): Promise<void> {
+    return delay(300).then(() => undefined)
   },
 }

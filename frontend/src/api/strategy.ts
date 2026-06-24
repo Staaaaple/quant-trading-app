@@ -1,4 +1,5 @@
-import { request } from './client'
+import { delay } from './mock/utils'
+import { DEMO_STRATEGIES, DEMO_DNA, DEMO_ECOSYSTEM } from './mock/demoData'
 
 export interface Strategy {
   id: number
@@ -33,39 +34,35 @@ export interface NlParseResponse {
 }
 
 export const strategyApi = {
-  list(query?: string): Promise<Strategy[]> {
-    return request(`/strategies${query || ''}`)
+  list(_query?: string): Promise<Strategy[]> {
+    return delay(300).then(() => DEMO_STRATEGIES as Strategy[])
   },
-  get(strategy_id: string): Promise<Strategy> {
-    return request(`/strategies/${strategy_id}`)
+  get(_strategy_id: string): Promise<Strategy> {
+    return delay(300).then(() => DEMO_STRATEGIES[0] as Strategy)
   },
   create(payload: StrategyCreatePayload): Promise<Strategy> {
-    return request('/strategies', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+    return delay(500).then(() => ({ ...DEMO_STRATEGIES[0], ...payload } as Strategy))
   },
   update(strategy_id: string, payload: Partial<StrategyCreatePayload>): Promise<Strategy> {
-    return request(`/strategies/${strategy_id}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
+    return delay(400).then(() => {
+      const existing = DEMO_STRATEGIES.find((s: any) => s.strategy_id === strategy_id) || DEMO_STRATEGIES[0]
+      return { ...existing, ...payload } as Strategy
     })
   },
-  remove(strategy_id: string): Promise<void> {
-    return request(`/strategies/${strategy_id}`, {
-      method: 'DELETE',
-    })
+  remove(_strategy_id: string): Promise<void> {
+    return delay(300).then(() => undefined)
   },
-  previewCode(pipelineConfig: Record<string, any>): Promise<CodePreviewResponse> {
-    return request('/strategies/preview-code', {
-      method: 'POST',
-      body: JSON.stringify({ pipeline_config: pipelineConfig }),
-    })
+  previewCode(_pipelineConfig: Record<string, any>): Promise<CodePreviewResponse> {
+    return delay(600).then(() => ({ code: 'def handle_bar(context, bar):\n    pass\n' }))
   },
-  parseNl(text: string): Promise<NlParseResponse> {
-    return request('/strategies/parse-nl', {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-    })
+  parseNl(_text: string): Promise<NlParseResponse> {
+    return delay(600).then(() => ({
+      pipeline_config: { indicators: ['ma20', 'rsi'] },
+      confidence: 0.85,
+      warnings: [],
+      complex_keywords_found: [],
+      matched_spans: [],
+      unmatched_spans: [],
+    }))
   },
 }

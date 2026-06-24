@@ -1,4 +1,5 @@
-import { request } from './client'
+import { delay } from './mock/utils'
+import { DEMO_PAPER_TRADING_DAILY_RECORDS, DEMO_PAPER_TRADING_MONTHLY_STATS } from './mock/demoData'
 
 export interface PaperTradingDailyRecord {
   id: number
@@ -27,47 +28,31 @@ export interface PaperTradingMonthlyStat {
 }
 
 export const paperTradingApi = {
-  listDailyRecords(params?: {
+  listDailyRecords(_params?: {
     portfolio_id?: number
     start_date?: string
     end_date?: string
     limit?: number
   }): Promise<PaperTradingDailyRecord[]> {
-    const search = new URLSearchParams()
-    if (params?.portfolio_id) search.set('portfolio_id', String(params.portfolio_id))
-    if (params?.start_date) search.set('start_date', params.start_date)
-    if (params?.end_date) search.set('end_date', params.end_date)
-    if (params?.limit) search.set('limit', String(params.limit))
-    const qs = search.toString()
-    return request(`/paper-trading/daily-records${qs ? `?${qs}` : ''}`)
+    return delay(300).then(() => DEMO_PAPER_TRADING_DAILY_RECORDS as PaperTradingDailyRecord[])
   },
 
-  listMonthlyStats(params?: { portfolio_id?: number; limit?: number }): Promise<PaperTradingMonthlyStat[]> {
-    const search = new URLSearchParams()
-    if (params?.portfolio_id) search.set('portfolio_id', String(params.portfolio_id))
-    if (params?.limit) search.set('limit', String(params.limit))
-    const qs = search.toString()
-    return request(`/paper-trading/monthly-stats${qs ? `?${qs}` : ''}`)
+  listMonthlyStats(_params?: { portfolio_id?: number; limit?: number }): Promise<PaperTradingMonthlyStat[]> {
+    return delay(300).then(() => DEMO_PAPER_TRADING_MONTHLY_STATS as PaperTradingMonthlyStat[])
   },
 
-  getLatest(params?: { portfolio_id?: number }): Promise<PaperTradingDailyRecord | null> {
-    const search = new URLSearchParams()
-    if (params?.portfolio_id) search.set('portfolio_id', String(params.portfolio_id))
-    const qs = search.toString()
-    return request(`/paper-trading/latest${qs ? `?${qs}` : ''}`)
+  getLatest(_params?: { portfolio_id?: number }): Promise<PaperTradingDailyRecord | null> {
+    return delay(300).then(() => {
+      const records = DEMO_PAPER_TRADING_DAILY_RECORDS as PaperTradingDailyRecord[]
+      return records[records.length - 1] || null
+    })
   },
 
-  syncDaily(report_date?: string): Promise<{ detail: string; result: Record<string, unknown> }> {
-    const search = new URLSearchParams()
-    if (report_date) search.set('report_date', report_date)
-    const qs = search.toString()
-    return request(`/paper-trading/sync-daily${qs ? `?${qs}` : ''}`, { method: 'POST' })
+  syncDaily(_report_date?: string): Promise<{ detail: string; result: Record<string, unknown> }> {
+    return delay(500).then(() => ({ detail: '同步完成', result: {} }))
   },
 
-  calcMonthly(year_month?: string): Promise<{ detail: string; result: Record<string, unknown> }> {
-    const search = new URLSearchParams()
-    if (year_month) search.set('year_month', year_month)
-    const qs = search.toString()
-    return request(`/paper-trading/calc-monthly${qs ? `?${qs}` : ''}`, { method: 'POST' })
+  calcMonthly(_year_month?: string): Promise<{ detail: string; result: Record<string, unknown> }> {
+    return delay(500).then(() => ({ detail: '计算完成', result: {} }))
   },
 }

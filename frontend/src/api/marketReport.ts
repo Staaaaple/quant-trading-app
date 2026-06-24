@@ -1,4 +1,5 @@
-import client from './client'
+import { delay } from './mock/utils'
+import { DEMO_DAILY_REPORT, DEMO_WEEKLY_REPORT } from './mock/demoData'
 
 // ── 市场报告 ──
 
@@ -7,22 +8,29 @@ export interface MarketReportPayload {
   report_type?: 'auto' | 'daily' | 'weekly'
 }
 
-export function generateMarketReport(payload: MarketReportPayload) {
-  return client.post<{ success: boolean; data: any }>('/fullchain/market-report/generate', payload)
+export function generateMarketReport(_payload: MarketReportPayload) {
+  return delay(500).then(() => ({ data: { success: true, data: DEMO_DAILY_REPORT } }))
 }
 
-export function getLatestMarketReport(userId: number, reportType: 'daily' | 'weekly' = 'daily') {
-  return client.get<{ success: boolean; data: any; message?: string }>(`/fullchain/market-report/latest/${userId}?report_type=${reportType}`)
+export function getLatestMarketReport(_userId: number, reportType: 'daily' | 'weekly' = 'daily') {
+  return delay(400).then(() => ({
+    data: {
+      success: true,
+      data: reportType === 'daily' ? DEMO_DAILY_REPORT : DEMO_WEEKLY_REPORT,
+      message: undefined as string | undefined,
+    },
+  }))
 }
 
 export function listMarketReports(
-  userId: number,
+  _userId: number,
   reportType?: 'daily' | 'weekly',
-  limit?: number,
+  _limit?: number,
 ) {
-  const params = new URLSearchParams()
-  if (reportType) params.append('report_type', reportType)
-  if (limit) params.append('limit', String(limit))
-  const query = params.toString()
-  return client.get<{ success: boolean; data: any[] }>(`/fullchain/market-report/list/${userId}${query ? `?${query}` : ''}`)
+  return delay(400).then(() => ({
+    data: {
+      success: true,
+      data: reportType === 'weekly' ? [DEMO_WEEKLY_REPORT] : [DEMO_DAILY_REPORT],
+    },
+  }))
 }

@@ -1,4 +1,5 @@
-import client from './client'
+import { delay } from './mock/utils'
+import { DEMO_BACKTEST_ADAPTER_RESULT } from './mock/demoData'
 
 export interface BacktestAdapterPayload {
   portfolio_id: string
@@ -39,6 +40,6 @@ export interface BacktestAdapterResult {
 }
 
 export const backtestAdapterApi = {
-  run: (payload: BacktestAdapterPayload) =>
-    client.post<BacktestAdapterResult>('/backtest-adapter/run', payload).then(r => r.data),
+  run: (_payload: BacktestAdapterPayload) =>
+    delay(800).then(() => DEMO_BACKTEST_ADAPTER_RESULT as BacktestAdapterResult),
 }

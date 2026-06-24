@@ -1,4 +1,5 @@
-import { request, API_BASE } from './client'
+import { delay } from './mock/utils'
+import { DEMO_REAL_TRADES, DEMO_REAL_POSITIONS, DEMO_SYNC_LOGS, DEMO_PAPER_SIGNALS } from './mock/demoData'
 
 export interface RealTrade {
   id: number
@@ -110,61 +111,48 @@ export interface DailyReport {
 
 export const syncApi = {
   listTrades(): Promise<RealTrade[]> {
-    return request('/sync/trades')
+    return delay(300).then(() => DEMO_REAL_TRADES as RealTrade[])
   },
   createTrade(payload: RealTradeCreatePayload): Promise<RealTrade> {
-    return request('/sync/trades', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+    return delay(400).then(() => ({ id: Date.now(), ...payload, synced_at: new Date().toISOString() } as RealTrade))
   },
-  deleteTrade(tradeId: number): Promise<void> {
-    return request(`/sync/trades/${tradeId}`, {
-      method: 'DELETE',
-    })
+  deleteTrade(_tradeId: number): Promise<void> {
+    return delay(300).then(() => undefined)
   },
-  listPositions(strategyId?: string): Promise<RealPosition[]> {
-    const query = strategyId ? `?strategy_id=${encodeURIComponent(strategyId)}` : ''
-    return request(`/sync/positions${query}`)
+  listPositions(_strategyId?: string): Promise<RealPosition[]> {
+    return delay(300).then(() => DEMO_REAL_POSITIONS as RealPosition[])
   },
   listLogs(): Promise<SyncLog[]> {
-    return request('/sync/logs')
+    return delay(300).then(() => DEMO_SYNC_LOGS as SyncLog[])
   },
-  getDiff(strategyId: string): Promise<DiffResult> {
-    return request(`/sync/diff/${encodeURIComponent(strategyId)}`)
+  getDiff(_strategyId: string): Promise<DiffResult> {
+    return delay(300).then(() => ({ strategy_id: _strategyId, diffs: [] }))
   },
-  listSignals(strategyId?: string, status?: string): Promise<PaperSignal[]> {
-    const params = new URLSearchParams()
-    if (strategyId) params.append('strategy_id', strategyId)
-    if (status) params.append('status', status)
-    const query = params.toString() ? `?${params.toString()}` : ''
-    return request(`/paper-trading/signals${query}`)
+  listSignals(_strategyId?: string, _status?: string): Promise<PaperSignal[]> {
+    return delay(300).then(() => DEMO_PAPER_SIGNALS as PaperSignal[])
   },
-  getPendingSummary(thresholdMinutes = 30): Promise<PendingSummary> {
-    return request(`/sync/pending-summary?threshold_minutes=${thresholdMinutes}`)
+  getPendingSummary(_thresholdMinutes = 30): Promise<PendingSummary> {
+    return delay(300).then(() => ({ pending_count: 0, overdue_count: 0, threshold_minutes: _thresholdMinutes }))
   },
-  getDailyReport(strategyId: string, tradeDate?: string): Promise<DailyReport> {
-    const q = tradeDate ? `?trade_date=${tradeDate}` : ''
-    return request(`/sync/daily-report/${encodeURIComponent(strategyId)}${q}`)
+  getDailyReport(_strategyId: string, _tradeDate?: string): Promise<DailyReport> {
+    return delay(400).then(() => ({
+      trade_date: _tradeDate || new Date().toISOString().split('T')[0],
+      strategy_id: _strategyId,
+      simulated_signals_count: 0,
+      pending_signals_count: 0,
+      synced_signals_count: 0,
+      real_trades_count: 0,
+      real_pnl: 0,
+      positions: [],
+      diffs: [],
+      unsynced_list: [],
+      message: '今日无交易',
+    }))
   },
-  batchSync(items: { signal_id: string; actual_price: number; actual_qty?: number; sync_status?: string; remark?: string }[]): Promise<{ created: number; errors: string[] }> {
-    return request('/sync/batch-sync', {
-      method: 'POST',
-      body: JSON.stringify(items),
-    })
+  batchSync(_items: { signal_id: string; actual_price: number; actual_qty?: number; sync_status?: string; remark?: string }[]): Promise<{ created: number; errors: string[] }> {
+    return delay(500).then(() => ({ created: _items.length, errors: [] }))
   },
-  importCsv(file: File): Promise<{ created: number; errors: string[] }> {
-    const formData = new FormData()
-    formData.append('file', file)
-    return fetch(`${API_BASE}/sync/import-csv`, {
-      method: 'POST',
-      body: formData,
-    }).then(async (resp) => {
-      if (!resp.ok) {
-        const text = await resp.text()
-        throw new Error(`HTTP ${resp.status}: ${text}`)
-      }
-      return resp.json()
-    })
+  importCsv(_file: File): Promise<{ created: number; errors: string[] }> {
+    return delay(800).then(() => ({ created: 0, errors: [] }))
   },
 }

@@ -1,4 +1,5 @@
-import { request } from './client'
+import { delay } from './mock/utils'
+import { DEMO_RISK_STRATEGY } from './mock/demoData'
 
 export interface RiskStrategyConfig {
   strategy_id: string
@@ -8,19 +9,13 @@ export interface RiskStrategyConfig {
 }
 
 export const riskStrategyApi = {
-  get(strategy_id: string): Promise<RiskStrategyConfig> {
-    return request(`/risk-strategies/${strategy_id}`)
+  get(_strategy_id: string): Promise<RiskStrategyConfig> {
+    return delay(300).then(() => DEMO_RISK_STRATEGY as RiskStrategyConfig)
   },
   create(payload: RiskStrategyConfig): Promise<RiskStrategyConfig> {
-    return request('/risk-strategies', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+    return delay(500).then(() => payload)
   },
-  update(strategy_id: string, payload: Partial<RiskStrategyConfig>): Promise<RiskStrategyConfig> {
-    return request(`/risk-strategies/${strategy_id}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    })
+  update(_strategy_id: string, payload: Partial<RiskStrategyConfig>): Promise<RiskStrategyConfig> {
+    return delay(400).then(() => ({ ...DEMO_RISK_STRATEGY, ...payload } as RiskStrategyConfig))
   },
 }

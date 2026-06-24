@@ -1,4 +1,5 @@
-import { request } from './client'
+import { delay } from './mock/utils'
+import { DEMO_DNA, DEMO_ECOSYSTEM } from './mock/demoData'
 
 export interface StrategyDNA {
   strategy_id: string
@@ -157,39 +158,93 @@ export interface EcosystemOverview {
 }
 
 export const dnaApi = {
-  getDNA(strategy_id: string): Promise<StrategyDNA> {
-    return request(`/strategies/${strategy_id}/dna`)
+  getDNA(_strategy_id: string): Promise<StrategyDNA> {
+    return delay(300).then(() => DEMO_DNA as StrategyDNA)
   },
-  getSummary(strategy_id: string): Promise<StrategyDNASummary> {
-    return request(`/strategies/${strategy_id}/dna/summary`)
+  getSummary(_strategy_id: string): Promise<StrategyDNASummary> {
+    return delay(300).then(() => ({
+      strategy_id: 'demo_s1',
+      name: '科技ETF趋势策略',
+      gene_diversity_score: 0.78,
+      health_birth_score: 0.82,
+      feature_genes: ['ma20', 'volume_ratio', 'atr'],
+      signal_genes: ['crossover', 'momentum_break'],
+      status: 'active',
+      family_id: 'family_trend',
+      family_name: '趋势家族',
+      metabolic_rate: 0.65,
+      niche_width: 0.70,
+      inbreeding_warning: false,
+      homogeneity_risk: 0.15,
+      lifespan_months: 24,
+    }))
   },
-  sequence(strategy_id: string): Promise<StrategyDNA> {
-    return request(`/strategies/${strategy_id}/dna/sequence`, {
-      method: 'POST',
-    })
+  sequence(_strategy_id: string): Promise<StrategyDNA> {
+    return delay(500).then(() => DEMO_DNA as StrategyDNA)
   },
-  preview(strategy_id: string, code: string): Promise<DNAPreview> {
-    return request(`/dna/preview`, {
-      method: 'POST',
-      body: JSON.stringify({ strategy_id, code }),
-    })
+  preview(_strategy_id: string, _code: string): Promise<DNAPreview> {
+    return delay(600).then(() => ({
+      strategy_id: 'demo_s1',
+      feature_genes: ['ma20', 'volume_ratio', 'atr'],
+      signal_genes: ['crossover', 'momentum_break'],
+      risk_genes: ['max_drawdown_guard', 'position_limit'],
+      execution_genes: ['twap', 'slippage_control'],
+      gene_diversity_score: 0.78,
+      health_birth_score: 0.82,
+      gene_vector: [0.1, 0.2, 0.3, 0.4],
+      metabolic_rate: 0.65,
+      niche_width: 0.70,
+      metabolic_syndrome: false,
+      metabolic_markers: ['stable'],
+      ast_features: {},
+    }))
   },
   listAll(): Promise<StrategyDNASummary[]> {
-    return request(`/dna/list`)
+    return delay(300).then(() => [
+      {
+        strategy_id: 'demo_s1',
+        name: '科技ETF趋势策略',
+        gene_diversity_score: 0.78,
+        health_birth_score: 0.82,
+        feature_genes: ['ma20', 'volume_ratio', 'atr'],
+        signal_genes: ['crossover', 'momentum_break'],
+        status: 'active',
+        family_id: 'family_trend',
+        family_name: '趋势家族',
+        metabolic_rate: 0.65,
+        niche_width: 0.70,
+        inbreeding_warning: false,
+        homogeneity_risk: 0.15,
+        lifespan_months: 24,
+      },
+    ])
   },
-  getPhylogeny(strategy_id: string): Promise<StrategyPhylogeny> {
-    return request(`/strategies/${strategy_id}/phylogeny`)
+  getPhylogeny(_strategy_id: string): Promise<StrategyPhylogeny> {
+    return delay(300).then(() => ({
+      strategy_id: 'demo_s1',
+      family_id: 'family_trend',
+      family_name: '趋势家族',
+      relatives: [
+        { strategy_id: 'demo_s2', name: '消费ETF均值回归', similarity: 0.45 },
+      ],
+      homogeneity_risk: 0.15,
+      inbreeding_warning: false,
+    }))
   },
   computePhylogeny(): Promise<{ status: string; message: string }> {
-    return request(`/dna/phylogeny/compute`, { method: 'POST' })
+    return delay(500).then(() => ({ status: 'ok', message: '系统发育计算完成' }))
   },
   listFamilies(): Promise<FamilyInfo[]> {
-    return request(`/dna/families`)
+    return delay(300).then(() => [
+      { family_id: 'family_trend', family_name: '趋势家族', count: 3 },
+      { family_id: 'family_mr', family_name: '均值回归家族', count: 2 },
+      { family_id: 'family_def', family_name: '防御家族', count: 2 },
+    ])
   },
   getEcosystem(): Promise<EcosystemOverview> {
-    return request(`/dna/ecosystem`)
+    return delay(400).then(() => DEMO_ECOSYSTEM as EcosystemOverview)
   },
-  getLifespan(strategy_id: string): Promise<{
+  getLifespan(_strategy_id: string): Promise<{
     strategy_id: string
     lifespan_months: number
     lifespan_phase: string
@@ -197,9 +252,16 @@ export const dnaApi = {
     aging_velocity: number
     lifespan_recommendations: string[]
   }> {
-    return request(`/strategies/${strategy_id}/lifespan`)
+    return delay(300).then(() => ({
+      strategy_id: 'demo_s1',
+      lifespan_months: 24,
+      lifespan_phase: 'mature',
+      lifespan_phase_label: '成熟期',
+      aging_velocity: 0.12,
+      lifespan_recommendations: ['定期再训练', '监控过拟合'],
+    }))
   },
   computeLifespans(): Promise<{ status: string; message: string }> {
-    return request(`/dna/lifespan/compute`, { method: 'POST' })
+    return delay(500).then(() => ({ status: 'ok', message: '寿命计算完成' }))
   },
 }

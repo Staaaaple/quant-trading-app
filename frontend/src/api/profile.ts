@@ -1,4 +1,5 @@
-import client from './client'
+import { delay } from './mock/utils'
+import { DEMO_QUESTIONS, DEMO_INVESTOR_PROFILE } from './mock/demoData'
 
 export interface Question {
   id: string
@@ -70,12 +71,34 @@ export interface InvestorProfile {
 }
 
 export const profileApi = {
-  getQuestions: () => client.get<Question[]>('/profiles/questions').then(r => r.data),
-  preview: (answers: Record<string, string | string[]>) => client.post<{ vector: ProfileVector; labels: ProfileLabels }>('/profiles/preview', answers).then(r => r.data),
-  /** 创建画像（user_id 从 header 自动获取） */
-  create: (answers: Record<string, string | string[]>) => client.post<InvestorProfile>('/profiles', { answers_json: answers }).then(r => r.data),
-  /** 获取当前用户的画像 */
-  getMine: () => client.get<InvestorProfile | null>('/profiles/me').then(r => r.data),
-  /** 更新画像（user_id 从 header 自动获取） */
-  update: (profileId: number, answers: Record<string, string | string[]>) => client.put<InvestorProfile>(`/profiles/${profileId}`, { answers_json: answers }).then(r => r.data),
+  getQuestions: () => delay(300).then(() => DEMO_QUESTIONS as Question[]),
+  preview: (answers: Record<string, string | string[]>) =>
+    delay(400).then(() => ({
+      vector: {
+        risk_tolerance: 0.55,
+        loss_aversion: 0.60,
+        herding_tendency: 0.45,
+        overconfidence: 0.40,
+        delayed_gratification: 0.65,
+        security_need: 0.70,
+        time_horizon_score: 0.60,
+        experience_level: 0.50,
+        capital_tier: 0.55,
+        income_stability: 0.65,
+        debt_pressure: 0.30,
+        information_processing: 0.55,
+        social_pressure: 0.40,
+        emergency_response: 0.60,
+        anchoring_effect: 0.45,
+        diversification_preference: 0.65,
+        stop_loss_discipline: 0.55,
+        emotional_stability: 0.60,
+      } as ProfileVector,
+      labels: { risk_label: '稳健型', time_horizon_label: '中期', experience_label: '中等' } as ProfileLabels,
+    })),
+  create: (answers: Record<string, string | string[]>) =>
+    delay(500).then(() => ({ ...DEMO_INVESTOR_PROFILE, answers_json: answers } as InvestorProfile)),
+  getMine: () => delay(300).then(() => DEMO_INVESTOR_PROFILE as InvestorProfile),
+  update: (_profileId: number, answers: Record<string, string | string[]>) =>
+    delay(500).then(() => ({ ...DEMO_INVESTOR_PROFILE, answers_json: answers } as InvestorProfile)),
 }

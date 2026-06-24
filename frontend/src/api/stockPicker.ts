@@ -1,4 +1,5 @@
-import { request } from './client'
+import { delay } from './mock/utils'
+import { DEMO_STOCK_POOLS, DEMO_PICKER_RUNS } from './mock/demoData'
 
 export interface StockPoolItem {
   id: number
@@ -44,33 +45,38 @@ export interface NotificationSettings {
 }
 
 export const stockPickerApi = {
-  runPicker(picker_id: string): Promise<StockPool> {
-    return request('/stock-picker/run', {
-      method: 'POST',
-      body: JSON.stringify({ picker_id }),
-    })
+  runPicker(_picker_id: string): Promise<StockPool> {
+    return delay(500).then(() => DEMO_STOCK_POOLS[0] as StockPool)
   },
-  listPools(picker_id?: string): Promise<StockPool[]> {
-    const qs = picker_id ? `?picker_id=${encodeURIComponent(picker_id)}` : ''
-    return request(`/stock-picker/pools${qs}`)
+  listPools(_picker_id?: string): Promise<StockPool[]> {
+    return delay(300).then(() => DEMO_STOCK_POOLS as StockPool[])
   },
-  getPool(pool_id: string): Promise<StockPool> {
-    return request(`/stock-picker/pools/${pool_id}`)
+  getPool(_pool_id: string): Promise<StockPool> {
+    return delay(300).then(() => DEMO_STOCK_POOLS[0] as StockPool)
   },
-  listRuns(picker_id?: string): Promise<PickerRun[]> {
-    const qs = picker_id ? `?picker_id=${encodeURIComponent(picker_id)}` : ''
-    return request(`/stock-picker/runs${qs}`)
+  listRuns(_picker_id?: string): Promise<PickerRun[]> {
+    return delay(300).then(() => DEMO_PICKER_RUNS as PickerRun[])
   },
   getWeeklySummary(): Promise<WeeklySummary> {
-    return request('/stock-picker/weekly-summary')
+    return delay(300).then(() => ({
+      has_new_weekly: true,
+      pool: DEMO_STOCK_POOLS[0] as StockPool,
+      generated_at: new Date().toISOString(),
+      item_count: 3,
+    }))
   },
   getNotificationSettings(): Promise<NotificationSettings> {
-    return request('/stock-picker/notification-settings')
+    return delay(300).then(() => ({
+      id: 1,
+      weekly_picker_push: true,
+      updated_at: new Date().toISOString(),
+    }))
   },
   updateNotificationSettings(payload: { weekly_picker_push: boolean }): Promise<NotificationSettings> {
-    return request('/stock-picker/notification-settings', {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    })
+    return delay(400).then(() => ({
+      id: 1,
+      weekly_picker_push: payload.weekly_picker_push,
+      updated_at: new Date().toISOString(),
+    }))
   },
 }

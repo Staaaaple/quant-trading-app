@@ -1,4 +1,5 @@
-import { request } from './client'
+import { delay } from './mock/utils'
+import { DEMO_ACCOUNT_SETTINGS } from './mock/demoData'
 
 export interface AccountSettings {
   id: number
@@ -19,12 +20,9 @@ export interface AccountSettingsPayload {
 
 export const accountSettingsApi = {
   get(): Promise<AccountSettings> {
-    return request('/account-settings')
+    return delay(300).then(() => DEMO_ACCOUNT_SETTINGS as AccountSettings)
   },
   update(payload: AccountSettingsPayload): Promise<AccountSettings> {
-    return request('/account-settings', {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    })
+    return delay(400).then(() => ({ ...DEMO_ACCOUNT_SETTINGS, ...payload } as AccountSettings))
   },
 }

@@ -1,4 +1,5 @@
-import client from './client'
+import { delay } from './mock/utils'
+import { DEMO_USER } from './mock/demoData'
 
 export interface User {
   id: number
@@ -16,10 +17,10 @@ export interface UserCreate {
 }
 
 export const userApi = {
-  list: () => client.get<User[]>('/users').then(r => r.data),
-  get: (id: number) => client.get<User>(`/users/${id}`).then(r => r.data),
-  create: (data: UserCreate) => client.post<User>('/users', data).then(r => r.data),
-  update: (id: number, data: Partial<UserCreate>) => client.put<User>(`/users/${id}`, data).then(r => r.data),
-  delete: (id: number) => client.delete(`/users/${id}`).then(r => r.data),
-  resetDemo: () => client.post<{ ok: boolean; deleted_counts?: Record<string, number> }>('/users/demo/reset').then(r => r.data),
+  list: () => delay(300).then(() => [DEMO_USER as User]),
+  get: (id: number) => delay(300).then(() => ({ ...DEMO_USER, id } as User)),
+  create: (data: UserCreate) => delay(400).then(() => ({ ...DEMO_USER, ...data, id: 1 } as User)),
+  update: (id: number, data: Partial<UserCreate>) => delay(400).then(() => ({ ...DEMO_USER, ...data, id } as User)),
+  delete: (_id: number) => delay(300).then(() => ({ success: true })),
+  resetDemo: () => delay(500).then(() => ({ ok: true, deleted_counts: {} })),
 }
